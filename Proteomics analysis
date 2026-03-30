@@ -1,0 +1,502 @@
+### Load packages that are needed ##
+library(readr)
+library(tximport)
+library(dplyr)
+library(tidyverse)
+library(ggrepel)
+library(VennDiagram)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(enrichR)
+library(clusterProfiler)
+library(ggplot2)
+library(dplyr)
+library(readxl)
+### read in files containing the top 100 proteins and intensity lelvels iin NMVs from different conditions ###
+#PBS
+PBS_Proteins <- read_excel("PBS_top.xlsx")
+PBS_Proteins <- PBS_Proteins %>%
+  rename(Protein.Group = "UNIPROT")
+view(PBS_Proteins)
+#nLDL
+nLDL_Proteins <- read_excel("nLDL top.xlsx")
+nLDL_Proteins <- nLDL_Proteins %>%
+  rename(Protein.Group = "UNIPROT")
+view(nLDL_Proteins)
+#oxLDL
+oxLDL_Proteins <- read_excel("oxLDL_top.xlsx")
+oxLDL_Proteins <- oxLDL_Proteins %>%
+  rename(Protein.Group = "UNIPROT")
+view(oxLDL_Proteins)
+
+#### Proteins are currently UniProt IDs so will switch to names instead ####
+#function to look up uniprot ids and return names 
+#pbs
+PBS_Protein_SYMBOL <- AnnotationDbi::select(org.Hs.eg.db, keys = PBS_Proteins$UNIPROT, columns = c("UNIPROT","SYMBOL"), keytype = "UNIPROT") %>%
+  filter(!duplicated(UNIPROT)) 
+View(PBS_Protein_SYMBOL)
+PBS_Proteins<- merge(PBS_Protein_SYMBOL,PBS_Proteins,by= "UNIPROT")
+View(PBS_Proteins)
+write.csv(PBS_Proteins, "PBS_PROTIENS_ANNOTATED_top.csv")
+#NLDL
+nLDL_Protein_SYMBOL <- AnnotationDbi::select(org.Hs.eg.db, keys = nLDL_Proteins$UNIPROT, columns = c("UNIPROT","SYMBOL"), keytype = "UNIPROT") %>%
+  filter(!duplicated(UNIPROT))
+View(nLDL_Protein_SYMBOL)
+nLDL_Proteins<- merge(nLDL_Protein_SYMBOL,nLDL_Proteins,by= "UNIPROT")
+View(nLDL_Proteins)
+write.csv(nLDL_Proteins, "nLDL_PROTIENS_ANNOTATED_top.csv")
+#OXLDL
+oxLDL_Protein_SYMBOL <- AnnotationDbi::select(org.Hs.eg.db, keys = oxLDL_Proteins$UNIPROT, columns = c("UNIPROT","SYMBOL"), keytype = "UNIPROT") %>%
+  filter(!duplicated(UNIPROT))
+View(oxLDL_Protein_SYMBOL)
+oxLDL_Proteins<- merge(oxLDL_Protein_SYMBOL,oxLDL_Proteins,by= "UNIPROT")
+View(oxLDL_Proteins)
+write.csv(oxLDL_Proteins, "oxLDL_PROTIENS_ANNOTATED_top.csv")
+
+####### Make Venn diagram ####
+#### make sheets of UNIPROTIDS ##
+PBS <- PBS_Proteins$UNIPROT
+nLDL <- nLDL_Proteins$UNIPROT
+oxLDL <- oxLDL_Proteins$UNIPROT
+
+### make venn plot ###
+#find intercets 
+intersect_PBS_nLDL <- intersect(PBS,nLDL)
+intersect_nLDL_oxLDL <- intersect(nLDL,oxLDL)
+intersect_PBS_oxLDL <- intersect(PBS,oxLDL)
+intersect_all <- intersect(intersect_PBS_nLDL,oxLDL)
+print(intersect_all)
+venn.plot <- draw.triple.venn(length(PBS), length(nLDL), length(oxLDL),
+                              length(intersect_PBS_nLDL),
+                              length(intersect_nLDL_oxLDL),
+                              length(intersect_PBS_oxLDL),
+                              length(intersect(intersect_PBS_nLDL,oxLDL)),
+                              category = c("PBS NL-EV", "nLDL NL-EV", "oxLDL NL-EV"),
+                              rotation = 1, 
+                              reverse = FALSE, 
+                              euler.d =FALSE, 
+                              scaled = FALSE,
+                              fill = c("#CC66FF", "#009E73", "#56B4E9"),
+                              alpha = rep(0.2,3),
+                              lwd = rep(4, 3), 
+                              lty = rep("blank", 3), 
+                              col = rep("black", 3),
+                              cex = rep(4, 7), 
+                              fontface = rep("italic", 7), 
+                              fontfamily = rep("serif", 7),
+                              sigdigs = 3, 
+                              direct.area = FALSE, 
+                              area.vector = 0,
+                              cat.cex = 3,
+                              cat.fontface = "bold",
+                              cat.default.pos = "outer")
+                              
+grid.draw(venn.plot)
+#### oxLDL NMVs have the most unique proteins so want to make a dataframe containing these unique proteins and their intensities ####
+# make a joint data frame with all the proteins from PBS and nLDL vesicles 
+nLDL_Proteins$SYMBOL.x <- NULL
+nLDL_Proteins <- nLDL_Proteins %>%
+  rename(SYMBOL.y = "SYMBOL")
+PBS_nLDL_proteins <- rbind(PBS_Proteins, nLDL_Proteins)
+# find proteins that are unique to oxLDL #
+oxLDL_unique_proteins <- anti_join(oxLDL_Proteins, PBS_nLDL_proteins, by= "SYMBOL")
+View(oxLDL_unique_proteins)
+write.csv(oxLDL_unique_proteins, "oxLDL_unique_proteins.csv")
+###### FIND PROTEINS THAT ARE SHARED BY LIPID treated macrophages ###
+# make datgframe of shared nLDL and oxLDL proteins 
+nLDL_and_oxLDL_proteins <- merge(oxLDL_Proteins, nLDL_Proteins, by="UNIPROT")
+# make a dataframe of proteins in lipid treated macrophages that are not in PBS NMVs#
+nLDL_oxLDL_unique_proteins <- anti_join(nLDL_and_oxLDL_proteins, PBS_Proteins, by="UNIPROT")
+View(nLDL_oxLDL_unique_proteins)
+### enrichment analysis with enrichr ####
+# view enrichr datbases 
+dbs <- listEnrichrDbs()
+dbs <- dbs[order(dbs$libraryName),]
+dbs$libraryName
+#### select GO and Kegg data bases ###
+dbs_enrich <- c("GO_Cellular_Component_2025","GO_Biological_Process_2025","GO_Molecular_Function_2025", "KEGG_2021_Human")
+dbs_reactome <- "Reactome_2022"   
+## enrichment for PBS NMVs ##
+PBS_Enriched <- enrichr(genes = PBS_Proteins$SYMBOL, databases = dbs_enrich)
+
+PBS_Enriched_cc_df <- as.data.frame(PBS_Enriched$GO_Cellular_Component_2025)
+PBS_Enriched_BP_df <- as.data.frame(PBS_Enriched$GO_Biological_Process_2025)
+PBS_Enriched_MF_df <- as.data.frame(PBS_Enriched$GO_Molecular_Function_2025)
+PBS_Enriched_KEGG_df <- as.data.frame(PBS_Enriched$KEGG_2021_Human)
+View(PBS_Enriched_BP_df)
+View(PBS_Enriched_cc_df)
+View(PBS_Enriched_MF_df)
+View(PBS_Enriched_KEGG_df)
+PBS_Reactome <- enrichr(genes = PBS_Proteins$SYMBOL, databases = dbs_reactome)
+PBS_Reactome <- as.data.frame(PBS_Reactome)
+View(PBS_Reactome)
+View(PBS_Enriched_df)
+##### cluster profiler ##
+# convert to entrez ##
+PBS_Protein_ENTREZ <- AnnotationDbi::select(org.Hs.eg.db, keys = PBS_Proteins$UNIPROT, columns = c("UNIPROT","ENTREZID"), keytype = "UNIPROT") %>%
+  filter(!duplicated(UNIPROT)) %>% 
+  filter(ENTREZID !='NA')
+View(PBS_Protein_ENTREZ)
+
+#NLDL
+nLDL_Protein_ENTREZ <- AnnotationDbi::select(org.Hs.eg.db, keys = nLDL_Proteins$UNIPROT, columns = c("UNIPROT","ENTREZID"), keytype = "UNIPROT") %>%
+  filter(!duplicated(UNIPROT)) %>% 
+  filter(ENTREZID !='NA')
+View(nLDL_Protein_ENTREZ)
+
+#OXLDL
+oxLDL_Protein_ENTREZ <- AnnotationDbi::select(org.Hs.eg.db, keys = oxLDL_Proteins$UNIPROT, columns = c("UNIPROT","ENTREZID"), keytype = "UNIPROT") %>%
+  filter(!duplicated(UNIPROT)) %>% 
+  filter(ENTREZID !='NA')
+View(oxLDL_Protein_ENTREZ)
+#oxLdl UNIQUE 
+
+oxLDL_unique_proteins_ENTREZ <- AnnotationDbi::select(org.Hs.eg.db, keys = oxLDL_unique_proteins$UNIPROT, columns = c("UNIPROT","ENTREZID"), keytype = "UNIPROT") %>%
+  filter(!duplicated(UNIPROT)) %>% 
+  filter(ENTREZID !='NA')
+View(oxLDL_unique_proteins_ENTREZ)
+# get background of all proteins identified to be expressed #
+background <-read_excel("reference_EV_protein_ID.xlsx")
+#convert to entrez
+background_entrez <-  AnnotationDbi::select(org.Hs.eg.db, keys = background$Protein.Group, columns = c("UNIPROT","ENTREZID"), keytype = "UNIPROT") %>%
+  filter(!duplicated(UNIPROT)) %>% 
+  filter(ENTREZID !='NA')
+# oxLDL GO enrichement #
+?gseGO()
+GSE_GO_BP_oxLDL_Protein_ENTREZ  <- enrichGO(gene = oxLDL_Protein_ENTREZ$ENTREZID, ont = "BP", OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", universe = background_entrez$ENTREZID )
+GSE_GO_CC_oxLDL_Protein_ENTREZ  <-  enrichGO(gene = oxLDL_Protein_ENTREZ$ENTREZID, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "CC", universe = background_entrez$ENTREZID )
+GSE_GO_MF_oxLDL_Protein_ENTREZ  <-  enrichGO(gene = oxLDL_Protein_ENTREZ$ENTREZID, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "MF", universe = background_entrez$ENTREZID )
+
+##### convert to dataframes ####
+GSE_GO_BP_oxLDL_Protein_ENTREZ_df  <- as.data.frame(GSE_GO_BP_oxLDL_Protein_ENTREZ )
+GSE_GO_CC_oxLDL_Protein_ENTREZ_df  <- as.data.frame(GSE_GO_CC_oxLDL_Protein_ENTREZ )
+GSE_GO_MF_oxLDL_Protein_ENTREZ_df  <- as.data.frame(GSE_GO_MF_oxLDL_Protein_ENTREZ ) 
+ 
+View(GSE_GO_BP_oxLDL_Protein_ENTREZ_df)
+View(GSE_GO_CC_oxLDL_Protein_ENTREZ_df)
+View(GSE_GO_MF_oxLDL_Protein_ENTREZ_df)
+
+## oxLDl Kegg##
+GSE_GO_BP_oxLDL_Protein_KEGG <- enrichKEGG(gene = oxLDL_Protein_ENTREZ$ENTREZID , organism = 'hsa', keyType="kegg", universe = background_entrez$ENTREZID )
+# Convert to data frame #
+GSE_GO_BP_oxLDL_Protein_KEGG_df <- as.data.frame(GSE_GO_BP_oxLDL_Protein_KEGG)
+View(GSE_GO_BP_oxLDL_Protein_KEGG_df)
+##### make donut plot ###
+# organise Go data
+## BP##
+#only 3 significant pathways for Bp
+GSE_GO_BP_oxLDL_Protein <- GSE_GO_BP_oxLDL_Protein_ENTREZ_df[1:3,]
+GSE_GO_BP_oxLDL_Protein <- data.frame(class = rep('BP', 3),
+                                    category = GSE_GO_BP_oxLDL_Protein$Description,
+                                    count = GSE_GO_BP_oxLDL_Protein$Count) 
+View(GSE_GO_BP_oxLDL_Protein)
+#### cc## 
+GSE_GO_CC_oxLDL_Protein <- GSE_GO_CC_oxLDL_Protein_ENTREZ_df[1:5,]
+GSE_GO_CC_oxLDL_Protein <- data.frame(class = rep('CC', 5),
+                                    category = GSE_GO_CC_oxLDL_Protein$Description,
+                                    count = GSE_GO_CC_oxLDL_Protein$Count) 
+View(GSE_GO_CC_oxLDL_Protein)
+### MF ####
+GSE_GO_MF_oxLDL_Protein <-  GSE_GO_MF_oxLDL_Protein_ENTREZ_df[1:2,]
+GSE_GO_MF_oxLDL_Protein <- data.frame(class = rep('MF', 2),
+                                    category = GSE_GO_MF_oxLDL_Protein$Description,
+                                    count = GSE_GO_MF_oxLDL_Protein$Count) 
+View(GSE_GO_MF_oxLDL_Protein)
+### join dat frames###
+combined_oxLDL_GO <- rbind(GSE_GO_BP_oxLDL_Protein, GSE_GO_CC_oxLDL_Protein, GSE_GO_MF_oxLDL_Protein)
+View(combined_oxLDL_GO)
+combined_oxLDL_GO <- combined_oxLDL_GO %>% arrange(class, category)
+#make plot 
+# Inner Ring: Categories
+inner_ring_oxLDL <- combined_oxLDL_GO %>%
+  mutate(level = 2, label = category,
+         text_label = as.character(count))
+
+# Outer Ring: Group totals
+outer_ring_oxLDL <- combined_oxLDL_GO %>%
+  group_by(class) %>%
+  summarise(count = sum(count)) %>%
+  arrange(class) %>%
+  mutate(level = 3, label = class,
+         text_label = class)
+
+# Combine for plotting
+plot_data_oxLDL <-  bind_rows(inner_ring_oxLDL, outer_ring_oxLDL) %>%
+  arrange(class, level)
+View(plot_data_oxLDL)
+# decide colours
+my_colors_oxLDL <- c(
+  "BP" = "#f7dafa", "CC" = "#ddfada", "MF" = "#fadaed",          # Neutral Outer
+  "translation" = "#f600f6", "protein metabolic process" = "#cd00cd", "cytoplasmic translation" = "#b700b7", #colours for bp 
+  "cytosolic ribosome" = "#35ee35", "ribosomal subunit" = "#B4EEB4", "ribosome" = "#9BCD9B","ribonucleoprotein complex" = "#5fc45f","large ribosomal subunit" = "#698B69", #CC colour 
+  "structural constituent of ribosome" = "#ff1d8e","structural molecule activity"="#e880b4")
+
+### Ensure the dataframe is physically sorted by this order
+plot_data_oxLDL$label <- factor(plot_data_oxLDL$label, levels = unique(plot_data_oxLDL$label))
+plot_data_oxLDL <- plot_data_oxLDL %>%
+  arrange(label, level)
+# 3. Create the Plot
+donut_plot_oxLDL <- ggplot(plot_data_oxLDL, aes(x = level, y = count, fill = label)) +
+  # White borders 
+  geom_col(color = "white", width = 1) +
+  # Convert to polar
+  coord_polar(theta = "y") +
+  # xlim(0.5, 3.5) creates the hole. 3.5 provides room for the outer ring.
+  xlim(0.5, 3.5) +
+  # Annotation for the center hole
+  annotate("text", x = 0.5, y = 0, label = "GO enriched
+  oxLDL NL-EV", 
+           fontface = "bold", size = 4) +
+  # Add the counts inside segments
+  scale_fill_manual(values = my_colors_oxLDL) + # Use the colour pallette 
+  geom_text(aes(label = text_label), 
+            position = position_stack(vjust = 0.5), 
+            size = 3, fontface = "bold") +
+  theme_void()
+donut_plot_oxLDL
+
+## oxLDL donut plot for kegg ##
+# create data frame 
+oxLDL_kegg <- data.frame(category = GSE_GO_BP_oxLDL_Protein_KEGG_df$Description, count = GSE_GO_BP_oxLDL_Protein_KEGG_df$Count)
+View(oxLDL_kegg)
+my_colours_oxLDL_KEGG <- c("Coronavirus disease - COVID-19"= "#ff69ff" , "Ribosome" = "#5fc45f")
+
+oxLDL_kegg_plot <- ggplot(oxLDL_kegg, aes(x = 2, y = count, fill = category)) +
+  geom_col(color = "white") +
+  coord_polar(theta = "y") +           # Converts bar to circle
+  xlim(0.5, 2.5) +                     # The '0.5' creates the hole in the center
+  theme_void() +                       # Removes background/axes
+  annotate("text", x = 0.5, y = 0, label = "KEGG enriched
+  oxLDL NL-EV", 
+           fontface = "bold", size = 4) + # Center text
+  scale_fill_manual(values = my_colours_oxLDL_KEGG) + #my colours 
+  geom_text(aes(label = count), position = position_stack(vjust = 0.5), 
+            size = 4, fontface = "bold")
+oxLDL_kegg_plot
+#OXldl UNIQUE GO #
+GSE_GO_BP_oxLDL_unique_proteins  <- enrichGO(gene = oxLDL_unique_proteins_ENTREZ$ENTREZID, ont = "BP", OrgDb = "org.Hs.eg.db", keyType = "ENTREZID")
+GSE_GO_CC_oxLDL_unique_proteins  <-  enrichGO(gene = oxLDL_unique_proteins_ENTREZ$ENTREZID, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "CC")
+GSE_GO_MF_oxLDL_unique_proteins <-  enrichGO(gene = oxLDL_unique_proteins_ENTREZ$ENTREZID, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "MF")
+
+##### convert to dataframes ####
+GSE_GO_BP_oxLDL_unique_proteins_df  <- as.data.frame(GSE_GO_BP_oxLDL_unique_proteins )
+GSE_GO_CC_oxLDL_unique_proteins_df  <- as.data.frame(GSE_GO_CC_oxLDL_unique_proteins )
+GSE_GO_MF_oxLDL_unique_proteins_df  <- as.data.frame(GSE_GO_MF_oxLDL_unique_proteins ) 
+write.csv("GSE_GO_MF_UT_vs_nLDL_LFC_PVAL_df.csv") 
+View(GSE_GO_BP_oxLDL_unique_proteins_df)
+View(GSE_GO_CC_oxLDL_unique_proteins_df)
+View(GSE_GO_MF_oxLDL_unique_proteins_df)
+
+# nLDL GO enrichement #
+?gseGO()
+GSE_GO_BP_nLDL_Protein_ENTREZ  <- enrichGO(gene = nLDL_Protein_ENTREZ$ENTREZID, ont = "BP", OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", universe = background_entrez$ENTREZID )
+GSE_GO_CC_nLDL_Protein_ENTREZ  <-  enrichGO(gene = nLDL_Protein_ENTREZ$ENTREZID, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "CC", universe = background_entrez$ENTREZID )
+GSE_GO_MF_nLDL_Protein_ENTREZ  <-  enrichGO(gene = nLDL_Protein_ENTREZ$ENTREZID, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "MF", universe = background_entrez$ENTREZID )
+
+##### convert to dataframes ####
+GSE_GO_BP_nLDL_Protein_ENTREZ_df  <- as.data.frame(GSE_GO_BP_nLDL_Protein_ENTREZ )
+GSE_GO_CC_nLDL_Protein_ENTREZ_df  <- as.data.frame(GSE_GO_CC_nLDL_Protein_ENTREZ )
+GSE_GO_MF_nLDL_Protein_ENTREZ_df  <- as.data.frame(GSE_GO_MF_nLDL_Protein_ENTREZ ) 
+
+View(GSE_GO_BP_nLDL_Protein_ENTREZ_df)
+View(GSE_GO_CC_nLDL_Protein_ENTREZ_df)
+View(GSE_GO_MF_nLDL_Protein_ENTREZ_df)
+
+## nLDl Kegg##
+GSE_GO_BP_nLDL_Protein_KEGG <- enrichKEGG(gene = nLDL_Protein_ENTREZ$ENTREZID , organism = 'hsa', keyType="kegg", universe = background_entrez$ENTREZID )
+# Convert to data frame #
+GSE_GO_BP_nLDL_Protein_KEGG_df <- as.data.frame(GSE_GO_BP_nLDL_Protein_KEGG)
+View(GSE_GO_BP_nLDL_Protein_KEGG_df)
+##### make donut plot ###
+# organise Go data
+## BP## # no bp enriched 
+
+#### cc## 
+GSE_GO_CC_nLDL_Protein <- GSE_GO_CC_nLDL_Protein_ENTREZ_df[1:5,]
+GSE_GO_CC_nLDL_Protein <- data.frame(class = rep('CC', 5),
+                                     category = GSE_GO_CC_nLDL_Protein$Description,
+                                     count = GSE_GO_CC_nLDL_Protein$Count) 
+View(GSE_GO_CC_nLDL_Protein)
+### MF ####
+GSE_GO_MF_nLDL_Protein <-  GSE_GO_MF_nLDL_Protein_ENTREZ_df[1:2,]
+GSE_GO_MF_nLDL_Protein <- data.frame(class = rep('MF', 2),
+                                     category = GSE_GO_MF_nLDL_Protein$Description,
+                                     count = GSE_GO_MF_nLDL_Protein$Count) 
+View(GSE_GO_MF_nLDL_Protein)
+### join dat frames###
+combined_nLDL_GO <- rbind( GSE_GO_CC_nLDL_Protein, GSE_GO_MF_nLDL_Protein)
+View(combined_nLDL_GO)
+combined_nLDL_GO <- combined_nLDL_GO %>% arrange(class, category)
+#make plot 
+# Inner Ring: Categories
+inner_ring_nLDL <- combined_nLDL_GO %>%
+  mutate(level = 2, label = category,
+         text_label = as.character(count))
+
+# Outer Ring: Group totals
+outer_ring_nLDL <- combined_nLDL_GO %>%
+  group_by(class) %>%
+  summarise(count = sum(count)) %>%
+  arrange(class) %>%
+  mutate(level = 3, label = class,
+         text_label = class)
+
+# Combine for plotting
+plot_data_nLDL <-  bind_rows(inner_ring_nLDL, outer_ring_nLDL) %>%
+  arrange(class, level)
+View(plot_data_nLDL)
+# decide colours
+my_colors_nLDL <- c(
+"CC" = "#ddfada", "MF" = "#fadaed",          # Neutral Outer
+  "cytosolic ribosome" = "#35ee35", "small ribosomal subunit" = "#B4EEB4", "ribosome" = "#9BCD9B","ribonucleoprotein complex" = "#5fc45f","ribosomal subunit" = "#698B69", #CC colour 
+  "structural constituent of ribosome" = "#ff1d8e", "structural molecule activity"="#e880b4")
+  
+### Ensure the dataframe is physically sorted by this order
+plot_data_nLDL$label <- factor(plot_data_nLDL$label, levels = unique(plot_data_nLDL$label))
+plot_data_nLDL <- plot_data_nLDL %>%
+  arrange(label, level)
+# 3. Create the Plot
+donut_plot_nLDL <- ggplot(plot_data_nLDL, aes(x = level, y = count, fill = label)) +
+  # White borders 
+  geom_col(color = "white", width = 1) +
+  # Convert to polar
+  coord_polar(theta = "y") +
+  # xlim(0.5, 3.5) creates the hole. 3.5 provides room for the outer ring.
+  xlim(0.5, 3.5) +
+  # Annotation for the center hole
+  annotate("text", x = 0.5, y = 0, label = "GO enriched
+  nLDL NL-EV", 
+           fontface = "bold", size = 4) +
+  # Add the counts inside segments
+  scale_fill_manual(values = my_colors_nLDL) + # Use the colour pallette 
+  geom_text(aes(label = text_label), 
+            position = position_stack(vjust = 0.5), 
+            size = 3, fontface = "bold") +
+  theme_void()
+donut_plot_nLDL
+
+## nLDL donut plot for kegg ##
+# create data frame 
+nLDL_kegg <- data.frame(category = GSE_GO_BP_nLDL_Protein_KEGG_df$Description, count = GSE_GO_BP_nLDL_Protein_KEGG_df$Count)
+View(nLDL_kegg)
+my_colours_nLDL_KEGG <- c("Coronavirus disease - COVID-19"= "#ff69ff", "Ribosome" = "#5fc45f")
+
+nLDL_kegg_plot <- ggplot(nLDL_kegg, aes(x = 2, y = count, fill = category)) +
+  geom_col(color = "white") +
+  coord_polar(theta = "y") +           # Converts bar to circle
+  xlim(0.5, 2.5) +                     # The '0.5' creates the hole in the center
+  theme_void() +                       # Removes background/axes
+  annotate("text", x = 0.5, y = 0, label = "KEGG enriched
+  nLDL NL-EV", 
+           fontface = "bold", size = 4) + # Center text
+  scale_fill_manual(values = my_colours_nLDL_KEGG) + #my colours 
+  geom_text(aes(label = count), position = position_stack(vjust = 0.5), 
+            size = 4, fontface = "bold")
+nLDL_kegg_plot
+####### PBS GO ######
+GSE_GO_BP_PBS_Protein_ENTREZ  <- enrichGO(gene = PBS_Protein_ENTREZ$ENTREZID, ont = "BP", OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", universe = background_entrez$ENTREZID )
+GSE_GO_CC_PBS_Protein_ENTREZ  <-  enrichGO(gene = PBS_Protein_ENTREZ$ENTREZID, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "CC", universe = background_entrez$ENTREZID )
+GSE_GO_MF_PBS_Protein_ENTREZ  <-  enrichGO(gene = PBS_Protein_ENTREZ$ENTREZID, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "MF", universe = background_entrez$ENTREZID )
+##### convert to dataframes ####
+GSE_GO_BP_PBS_Protein_ENTREZ_df  <- as.data.frame(GSE_GO_BP_PBS_Protein_ENTREZ )
+GSE_GO_CC_PBS_Protein_ENTREZ_df  <- as.data.frame(GSE_GO_CC_PBS_Protein_ENTREZ )
+GSE_GO_MF_PBS_Protein_ENTREZ_df  <- as.data.frame(GSE_GO_MF_PBS_Protein_ENTREZ ) 
+View(GSE_GO_BP_PBS_Protein_ENTREZ_df)
+View(GSE_GO_CC_PBS_Protein_ENTREZ_df)
+View(GSE_GO_MF_PBS_Protein_ENTREZ_df)
+###### PBS KEGG #####
+GSE_GO_BP_PBS_Protein_KEGG <- enrichKEGG(gene = PBS_Protein_ENTREZ$ENTREZID , organism = 'hsa', keyType="kegg", universe = background_entrez$ENTREZID )
+# Convert to data frame #
+GSE_GO_BP_PBS_Protein_KEGG_df <- as.data.frame(GSE_GO_BP_PBS_Protein_KEGG)
+View(GSE_GO_BP_PBS_Protein_KEGG_df)
+##### make donut plot ###
+# organise Go data
+## BP##
+GSE_GO_BP_PBS_Protein <- GSE_GO_BP_PBS_Protein_ENTREZ_df[1:1,]
+GSE_GO_BP_PBS_Protein <- data.frame(class = 'BP',
+                                     category = GSE_GO_BP_PBS_Protein$Description,
+                                     count = GSE_GO_BP_PBS_Protein$Count) 
+View(GSE_GO_BP_PBS_Protein)
+#### cc## 
+GSE_GO_CC_PBS_Protein <- GSE_GO_CC_PBS_Protein_ENTREZ_df[1:5,]
+GSE_GO_CC_PBS_Protein <- data.frame(class = rep('CC', 5),
+                                     category = GSE_GO_CC_PBS_Protein$Description,
+                                     count = GSE_GO_CC_PBS_Protein$Count) 
+View(GSE_GO_CC_PBS_Protein)
+### MF ####
+GSE_GO_MF_PBS_Protein <-  GSE_GO_MF_PBS_Protein_ENTREZ_df[1:2,]
+GSE_GO_MF_PBS_Protein <- data.frame(class = rep('MF', 2),
+                                     category = GSE_GO_MF_PBS_Protein$Description,
+                                     count = GSE_GO_MF_PBS_Protein$Count) 
+View(GSE_GO_MF_PBS_Protein)
+### join dat frames###
+combined_PBS_GO <- rbind(GSE_GO_BP_PBS_Protein, GSE_GO_CC_PBS_Protein, GSE_GO_MF_PBS_Protein)
+View(combined_PBS_GO)
+combined_PBS_GO <- combined_PBS_GO %>% arrange(class, category)
+#make plot 
+# Inner Ring: Categories
+inner_ring_PBS <- combined_PBS_GO %>%
+  mutate(level = 2, label = category,
+         text_label = as.character(count))
+
+# Outer Ring: Group totals
+outer_ring_PBS <- combined_PBS_GO %>%
+  group_by(class) %>%
+  summarise(count = sum(count)) %>%
+  arrange(class) %>%
+  mutate(level = 3, label = class,
+         text_label = class)
+
+# Combine for plotting
+plot_data_PBS <-  bind_rows(inner_ring_PBS, outer_ring_PBS) %>%
+  arrange(class, level)
+View(plot_data_PBS)
+# decide colours
+my_colors_PBS <- c(
+  "BP" = "#f7dafa", "CC" = "#ddfada", "MF" = "#fadaed",          # Neutral Outer
+  "cytoplasmic translation" = "#ff69ff",#colours for bp 
+  "cytosolic ribosome" = "#35ee35", "small ribosomal subunit" = "#B4EEB4", "ribosome" = "#9BCD9B","ribonucleoprotein complex" = "#5fc45f","ribosomal subunit" = "#698B69", #CC colour  
+  "structural constituent of ribosome" = "#ff1d8e","structural molecule activity"="#e880b4")
+
+### Ensure the dataframe is physically sorted by this order
+plot_data_PBS$label <- factor(plot_data_PBS$label, levels = unique(plot_data_PBS$label))
+plot_data_PBS <- plot_data_PBS %>%
+  arrange(label, level)
+# 3. Create the Plot
+donut_plot_PBS <- ggplot(plot_data_PBS, aes(x = level, y = count, fill = label)) +
+  # White borders 
+  geom_col(color = "white", width = 1) +
+  # Convert to polar
+  coord_polar(theta = "y") +
+  # xlim(0.5, 3.5) creates the hole. 3.5 provides room for the outer ring.
+  xlim(0.5, 3.5) +
+  # Annotation for the center hole
+  annotate("text", x = 0.5, y = 0, label = "GO enriched
+  PBS NL-EV", 
+           fontface = "bold", size = 4) +
+  # Add the counts inside segments
+  scale_fill_manual(values = my_colors_PBS) + # Use the colour pallette 
+  geom_text(aes(label = text_label), 
+            position = position_stack(vjust = 0.5), 
+            size = 3, fontface = "bold") +
+  theme_void()
+donut_plot_PBS
+
+## PBS donut plot for kegg ##
+# create data frame 
+PBS_kegg <- data.frame(category = GSE_GO_BP_PBS_Protein_KEGG_df$Description, count = GSE_GO_BP_PBS_Protein_KEGG_df$Count)
+View(PBS_kegg)
+my_colours_PBS_KEGG <- c("Coronavirus disease - COVID-19"= "#ff69ff", "Ribosome" = "#5fc45f")
+
+PBS_kegg_plot <- ggplot(PBS_kegg, aes(x = 2, y = count, fill = category)) +
+  geom_col(color = "white") +
+  coord_polar(theta = "y") +           # Converts bar to circle
+  xlim(0.5, 2.5) +                     # The '0.5' creates the hole in the center
+  theme_void() +                       # Removes background/axes
+  annotate("text", x = 0.5, y = 0, label = "KEGG enriched
+  PBS NL-EV", 
+           fontface = "bold", size = 4) + # Center text
+  scale_fill_manual(values = my_colours_PBS_KEGG) + #my colours 
+  geom_text(aes(label = count), position = position_stack(vjust = 0.5), 
+            size = 4, fontface = "bold")
+PBS_kegg_plot
