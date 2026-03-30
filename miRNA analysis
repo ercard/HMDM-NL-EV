@@ -1,0 +1,426 @@
+#### load libriaries  needed to  organise data frames #####
+library(readr)
+library(tximport)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(pheatmap)
+library(tibble)
+library(edgeR)
+library(ggrepel)
+library(tidyverse)
+library(gtools)
+library(readxl)
+library(VennDiagram)
+###### read in data frame with average counts of PBS nmv MIRS AND THE COUNTS OF THE SAME MIRS IN HMDMS ###
+M0_PBS_HMDM_fd <- read.csv("M0_HMDM_PBS_NMV_miRs.csv")
+###### read in data frame with average counts of nLDL nmv MIRS AND THE COUNTS OF THE SAME MIRS IN HMDMS ###
+M0_nLDL_HMDM_fd <- read.csv("M0_HMDM_nLDL_NMV_miRs.csv")
+###### read in data frame with average counts of oxLDL nmv MIRS AND THE COUNTS OF THE SAME MIRS IN HMDMS ###
+M0_oxLDL_HMDM_fd <- read.csv("M0_HMDM_oxLDL_NMV_miRs.csv")
+##### spoke to endre and vikki and they said not to do fold difference and do ranking instead ###
+#PBS
+M0_PBS_HMDM_fd$NMV_Rank <- rank(-M0_PBS_HMDM_fd$PBS_NMV_averagecount) #NMV mirs with highest cpm given lowest ranking
+M0_PBS_HMDM_fd$HMDM_Rank <- rank(M0_PBS_HMDM_fd$HMDM_averagecount, ties.method = "max")# HMDM mirs with lowest count ranked lowest - currently as there is 34 0 values all have been given a rank of 33 then next rank is 34 - may come back and change this 
+#Nldl
+M0_nLDL_HMDM_fd$NMV_Rank <- rank(-M0_nLDL_HMDM_fd$nLDL_NMV_averagecount) #NMV mirs with highest cpm given lowest ranking
+M0_nLDL_HMDM_fd$HMDM_Rank <- rank(M0_nLDL_HMDM_fd$HMDM_averagecount, ties.method = "max")# HMDM mirs with lowest count ranked lowest - currently as there is 34 0 values all have been given a rank of 33 then next rank is 34 - may come back and change this 
+#oxLDL
+M0_oxLDL_HMDM_fd$NMV_Rank <- rank(-M0_oxLDL_HMDM_fd$oxLDL_NMV_averagecount) #NMV mirs with highest cpm given lowest ranking
+M0_oxLDL_HMDM_fd$HMDM_Rank <- rank(M0_oxLDL_HMDM_fd$HMDM_averagecount, ties.method = "max")# HMDM mirs with lowest count ranked lowest - currently as there is 34 0 values all have been given a rank of 33 then next rank is 34 - may come back and change this 
+
+
+
+#### Find target scan list of targets and mirs #####
+# first need to make names of mirs consistant as they may have a slighty different format between the seq data and the target scan database 
+standardize_mirna <- function(mirna_names) {
+  # This regex will match 'miR/let-' followed by numbers and optional letters
+  standardized <- str_extract(mirna_names, "...-\\d+[a-z]?(-3p|-5p)?") 
+  # Convert all to lowercase
+  tolower(standardized)
+}
+
+# standardise the ranked nmv and HMDM mir data
+M0_PBS_HMDM_fd$miR_name <- standardize_mirna(M0_PBS_HMDM_fd$miR_name)
+M0_nLDL_HMDM_fd$miR_name <- standardize_mirna(M0_nLDL_HMDM_fd$miR_name)
+M0_oxLDL_HMDM_fd$miR_name <- standardize_mirna(M0_oxLDL_HMDM_fd$miR_name)
+## load miRtarbase ##
+mirtarbase <- read.csv("mirTarBase.csv")
+# rename columns 
+names(mirtarbase)[names(mirtarbase) == "miRNA"] <- "miR_name"
+# standardise the names 
+mirtarbase$miR_name <- standardize_mirna(mirtarbase$miR_name)
+## remove potential targets which are not expressed in M0 macrophages 
+# read in fkpm counts of HMDM mRNA seq #
+HMDM_fkpm <- read.csv("gene_fpkm.xls.csv")
+# remove columns of NMV treated cells ##
+head(HMDM_fkpm, 1)
+M0_fkpm <- HMDM_fkpm  %>%
+  select (-contains(c('2', '3', '4')))
+head(M0_fkpm,1)
+## MAKE A COLUMN CONTAINING AVERAGE COUNT PER GENE AND EXLUDE THOSE WITH AN EXPRESSION UNDER 10 ##
+M0_fkpm['average_count'] = rowMeans(M0_fkpm[,2:9])
+M0_fkpm <- M0_fkpm %>% 
+  arrange(desc(average_count)) %>%
+  filter(average_count > 0.3)  
+#### REMOVE TARGETS FROM MIRTARBASE LIST IF NOT EXPRESSED IN MACROPHAGES ##
+M0_gene_names <- M0_fkpm$gene_name
+mirtarbase <- subset(mirtarbase, Target.Gene %in%  M0_gene_names)
+View(mirtarbase)
+#####pbs #######
+#### get number of targets 
+mirtarbase_target_number <- mirtarbase %>%
+  group_by(miR_name) %>%
+  summarize(Target_number = n_distinct(Target.Gene))
+View(mirtarbase_target_number)
+mirtarbase_M0_PBS_HMDM <- inner_join(M0_PBS_HMDM_fd, mirtarbase_target_number, join_by(miR_name))
+View(mirtarbase_M0_PBS_HMDM)
+## add a column containg the number of binding sites for each mir ## - do this for counting how many time gnes appear for each mir - use thew same code as for getting target.no but use count instead of no.unique 
+mirtarbase_target_sites <- mirtarbase %>%
+  group_by(miR_name) %>%
+  summarize(Target_Sites = length(Target.Gene))
+mirtarbase_M0_PBS_HMDM <- inner_join(mirtarbase_M0_PBS_HMDM, mirtarbase_target_sites, join_by(miR_name))
+View(mirtarbase_M0_PBS_HMDM)
+### rank number of targets and sites from highest to lowest ##
+mirtarbase_M0_PBS_HMDM$Target_number_Rank <- rank(-mirtarbase_M0_PBS_HMDM$Target_number) 
+mirtarbase_M0_PBS_HMDM$Target_site_Rank <- rank(-mirtarbase_M0_PBS_HMDM$Target_Sites) 
+write.csv(mirtarbase_M0_PBS_HMDM, "mirtarbase_M0_PBS_HMDM.csv")
+### get targets #####
+mirtarbase_M0_PBS_targets <- inner_join(mirtarbase, mirtarbase_M0_PBS_HMDM, join_by(miR_name))
+View(mirtarbase_M0_PBS_targets)
+mirtarbase_M0_PBS_targets <- mirtarbase_M0_PBS_targets %>% # so only get unique target names per mir
+  rowwise() %>% 
+  mutate(fltr = str_c(sort(c_across(c("miR_name", "Target.Gene"))), collapse = "")) %>% 
+  distinct(fltr, .keep_all = TRUE) %>% 
+  select(-fltr) %>% 
+  ungroup()
+## read in the up reg deg list ###
+PBS_Degs_up <- read.csv("sig_diff_Pvalue_UT_vs_PBS_UP.csv")
+# change the gene name column to match mir tar list #
+names(PBS_Degs_up)[names(PBS_Degs_up) == "row"] <- "Target.Gene"
+M0_PBS_targets_up <- inner_join(mirtarbase_M0_PBS_targets, PBS_Degs_up, join_by(Target.Gene))
+View(M0_PBS_targets_up)
+write.csv(M0_PBS_targets_up, "PBS_low_targets_up.csv")
+
+## read in the down reg deg list ###
+PBS_Degs <- read.csv("sig_diff_Pvalue_UT_vs_PBS_down.csv")
+# change the gene name column to match mir tar list #
+names(PBS_Degs)[names(PBS_Degs) == "row"] <- "Target.Gene"
+M0_PBS_targets <- inner_join(mirtarbase_M0_PBS_targets, PBS_Degs, join_by(Target.Gene))
+View(M0_PBS_targets)
+write.csv(M0_PBS_targets, "PBS_low_targets_down.csv")
+M0_PBS_targets_network <- M0_PBS_targets %>%
+  filter(log2FoldChange < 0) %>%
+  distinct(Target.Gene) %>%
+  write.csv("PBS_nmv_target_down_network.csv")
+
+
+
+####Nldl ##
+#### get number of targets 
+mirtarbase_M0_nLDL_HMDM <- inner_join(M0_nLDL_HMDM_fd, mirtarbase_target_number, join_by(miR_name))
+View(mirtarbase_M0_nLDL_HMDM)
+## add a column containg the number of binding sites for each mir ## - do this for counting how many time gnes appear for each mir - use thew same code as for getting target.no but use count instead of no.unique 
+mirtarbase_M0_nLDL_HMDM <- inner_join(mirtarbase_M0_nLDL_HMDM, mirtarbase_target_sites, join_by(miR_name))
+View(mirtarbase_M0_nLDL_HMDM)
+### rank number of targets and sites from highest to lowest ##
+mirtarbase_M0_nLDL_HMDM$Target_number_Rank <- rank(-mirtarbase_M0_nLDL_HMDM$Target_number) 
+mirtarbase_M0_nLDL_HMDM$Target_site_Rank <- rank(-mirtarbase_M0_nLDL_HMDM$Target_Sites) 
+write.csv(mirtarbase_M0_nLDL_HMDM, "mirtarbase_M0_nLDL_HMDM.csv")
+### get targets #####
+mirtarbase_M0_nLDL_targets <- inner_join(mirtarbase, mirtarbase_M0_nLDL_HMDM, join_by(miR_name))
+View(mirtarbase_M0_nLDL_targets)
+mirtarbase_M0_nLDL_targets <- mirtarbase_M0_nLDL_targets %>% # so only get unique target names per mir
+  rowwise() %>% 
+  mutate(fltr = str_c(sort(c_across(c("miR_name", "Target.Gene"))), collapse = "")) %>% 
+  distinct(fltr, .keep_all = TRUE) %>% 
+  select(-fltr) %>% 
+  ungroup()
+## read in the deg list ###
+nLDL_Degs <- read.csv("sig_diff_Pvalue_UT_vs_nLDL_down.csv")
+# change the gene name column to match mir tar list #
+names(nLDL_Degs)[names(nLDL_Degs) == "row"] <- "Target.Gene"
+M0_nLDL_targets <- inner_join(mirtarbase_M0_nLDL_targets, nLDL_Degs, join_by(Target.Gene))
+View(M0_nLDL_targets)
+write.csv(M0_nLDL_targets, "nLDL_low_targets_down.csv")
+M0_nLDL_targets_network <- M0_nLDL_targets %>%
+  filter(log2FoldChange < 0) %>%
+  distinct(Target.Gene) %>%
+  write.csv("nLDL_nmv_target_down_network.csv")
+## read in the up reg deg list ###
+nLDL_Degs_up <- read.csv("sig_diff_Pvalue_UT_vs_nLDL_UP.csv")
+# change the gene name column to match mir tar list #
+names(nLDL_Degs_up)[names(nLDL_Degs_up) == "row"] <- "Target.Gene"
+M0_nLDL_targets_up <- inner_join(mirtarbase_M0_nLDL_targets, nLDL_Degs_up, join_by(Target.Gene))
+View(M0_nLDL_targets_up)
+write.csv(M0_nLDL_targets_up, "nLDL_low_targets_up.csv")
+
+##### OXldll ##
+#### get number of targets 
+mirtarbase_M0_oxLDL_HMDM <- inner_join(M0_oxLDL_HMDM_fd, mirtarbase_target_number, join_by(miR_name))
+View(mirtarbase_M0_oxLDL_HMDM)
+## add a column containg the number of binding sites for each mir ## - do this for counting how many time gnes appear for each mir - use thew same code as for getting target.no but use count instead of no.unique 
+mirtarbase_M0_oxLDL_HMDM <- inner_join(mirtarbase_M0_oxLDL_HMDM, mirtarbase_target_sites, join_by(miR_name))
+View(mirtarbase_M0_oxLDL_HMDM)
+### rank number of targets and sites from highest to lowest ##
+mirtarbase_M0_oxLDL_HMDM$Target_number_Rank <- rank(-mirtarbase_M0_oxLDL_HMDM$Target_number) 
+mirtarbase_M0_oxLDL_HMDM$Target_site_Rank <- rank(-mirtarbase_M0_oxLDL_HMDM$Target_Sites) 
+write.csv(mirtarbase_M0_oxLDL_HMDM, "mirtarbase_M0_oxLDL_HMDM.csv")
+### get targets #####
+mirtarbase_M0_oxLDL_targets <- inner_join(mirtarbase, mirtarbase_M0_oxLDL_HMDM, join_by(miR_name))
+View(mirtarbase_M0_oxLDL_targets)
+mirtarbase_M0_oxLDL_targets <- mirtarbase_M0_oxLDL_targets %>% # so only get unique target names per mir
+  rowwise() %>% 
+  mutate(fltr = str_c(sort(c_across(c("miR_name", "Target.Gene"))), collapse = "")) %>% 
+  distinct(fltr, .keep_all = TRUE) %>% 
+  select(-fltr) %>% 
+  ungroup()
+## read in the deg list ###
+oxLDL_Degs <- read.csv("sig_diff_Pvalue_UT_vs_oxLDL_down.csv")
+# change the gene name column to match mir tar list #
+names(oxLDL_Degs)[names(oxLDL_Degs) == "row"] <- "Target.Gene"
+M0_oxLDL_targets <- inner_join(mirtarbase_M0_oxLDL_targets, oxLDL_Degs, join_by(Target.Gene))
+View(M0_oxLDL_targets)
+write.csv(M0_oxLDL_targets, "oxLDL_low_targets_down.csv")
+M0_oxLDL_targets_network <- M0_oxLDL_targets %>%
+  filter(log2FoldChange < 0) %>%
+  distinct(Target.Gene) %>%
+  write.csv("oxLDL_nmv_target_down_network.csv")
+#upregulated
+oxLDL_Degs_up <- read.csv("sig_diff_Pvalue_UT_vs_oxLDL_UP.csv")
+# change the gene name column to match mir tar list #
+names(oxLDL_Degs_up)[names(oxLDL_Degs_up) == "row"] <- "Target.Gene"
+M0_oxLDL_targets_up <- inner_join(mirtarbase_M0_oxLDL_targets, oxLDL_Degs_up, join_by(Target.Gene))
+View(M0_oxLDL_targets_up)
+write.csv(M0_oxLDL_targets_up, "oxLDL_low_targets_up.csv")
+#### read in the oxphos realted gene list and join by symbol ##
+oxphos_degs <- read.csv("G:/Shared drives/Ridger Lab/Erin/RNA seq/HMDM mRNA quantificantion and analysis/mRNA deseq2/deseq condition/oxLDLoxphosgenesstats.csv")
+# change the gene name column to match mir tar list #
+names(oxphos_degs)[names(oxphos_degs) == "SYMBOL"] <- "Target.Gene"
+M0_oxLDL_OXPHOS_targets <- inner_join(mirtarbase_M0_oxLDL_targets, oxphos_degs, join_by(Target.Gene)) %>% 
+  write.csv("M0_oxLDL_OXPHOS_targets.csv")
+View(M0_oxLDL_OXPHOS_targets)
+## get miRs for Sangam ###
+sangam <- data.frame(Target.Gene = c("ABCB6","TOMM22","LETM1","SLC25A3","FGF2","ATP5PB","TCIRG1","COX4I1","MT-CO2","PLP2","DCD","SLC25A11","SLC7A5","ATP5ME","NDUFB9","VAMP2","SLC25A6","SLC25A5","NDUFB11","COX6C","UQCRQ","CHCHD2","UQCRB","ATP5PB","COX4I1","MT-CO2","ATP5ME","NDUFB9"))
+# get targets of nLDL miRs withh cpm >100 cpm ###
+nLDL_miRs <- read.csv("nLDL_miRs.csv")
+# standardise 
+nLDL_miRs$miR_name <- standardize_mirna(nLDL_miRs$miR_name)
+# get targets 
+nLDL_targets <- inner_join(mirtarbase, nLDL_miRs, join_by(miR_name))
+Sangam_targets <- inner_join(nLDL_targets, sangam, join_by(Target.Gene)) %>% 
+  write.csv("sangam_targets.csv")
+##### Get targets for mirs with high expression in macrophages but with >100 fold higher expression in in NMVs #######
+#PBS
+PBS_high_miRs_fd <- PBS_HMDM_fd %>% 
+  filter(HMDM_averagecount > 10) %>%
+  filter(fold_difference > 100) 
+  #nLDL
+  nLDL_high_miRs_fd <- nLDL_HMDM_fd %>% 
+  filter(HMDM_averagecount > 10) %>%
+  filter(fold_difference > 100) 
+#oxLDL 
+oxLDL_high_miRs_fd <- oxLDL_HMDM_fd %>% 
+  filter(HMDM_averagecount > 10) %>%
+  filter(fold_difference > 100) 
+View(oxLDL_high_miRs_fd)
+#standardise names 
+PBS_high_miRs_fd$miR_name <- standardize_mirna(PBS_high_miRs_fd$miR_name)
+nLDL_high_miRs_fd$miR_name <- standardize_mirna(nLDL_high_miRs_fd$miR_name)
+oxLDL_high_miRs_fd$miR_name <- standardize_mirna(oxLDL_high_miRs_fd$miR_name)
+# get pbs target number and sites #
+mirtarbase_PBS_high_miRs_fd <- inner_join(PBS_high_miRs_fd, mirtarbase_target_number, join_by(miR_name))
+mirtarbase_PBS_high_miRs_fd<- inner_join(mirtarbase_PBS_high_miRs_fd, mirtarbase_target_sites, join_by(miR_name))
+write.csv(mirtarbase_PBS_high_miRs_fd, "mirtarbase_PBS_high_miRs_fd.csv")
+# get target names 
+mirtarbase_PBS_high_miRs_targets <- inner_join(mirtarbase, mirtarbase_PBS_high_miRs_fd, join_by(miR_name))
+View(mirtarbase_PBS_high_miRs_targets)
+mirtarbase_PBS_high_miRs_targets <- mirtarbase_PBS_high_miRs_targets %>% # so only get unique target names per mir
+  rowwise() %>% 
+  mutate(fltr = str_c(sort(c_across(c("miR_name", "Target.Gene"))), collapse = "")) %>% 
+  distinct(fltr, .keep_all = TRUE) %>% 
+  select(-fltr) %>% 
+  ungroup()
+write.csv(mirtarbase_PBS_high_miRs_targets, "mirtarbase_PBS_high_miRs_targets.csv")
+PBS_high_targets <- inner_join(mirtarbase_PBS_high_miRs_targets, PBS_Degs, join_by(Target.Gene))
+View(PBS_high_targets)
+write.csv(PBS_high_targets, "PBS_high_targets.csv")
+#upregulated
+PBS_high_targets_up <- inner_join(mirtarbase_PBS_high_miRs_targets, PBS_Degs_up, join_by(Target.Gene))
+View(PBS_high_targets_up)
+write.csv(PBS_high_targets_up, "PBS_high_targets_up.csv")
+
+# get nLDL target number and sites #
+mirtarbase_nLDL_high_miRs_fd <- inner_join(nLDL_high_miRs_fd, mirtarbase_target_number, join_by(miR_name))
+mirtarbase_nLDL_high_miRs_fd<- inner_join(mirtarbase_nLDL_high_miRs_fd, mirtarbase_target_sites, join_by(miR_name))
+write.csv(mirtarbase_nLDL_high_miRs_fd, "mirtarbase_nLDL_high_miRs_fd.csv")
+# get target names 
+mirtarbase_nLDL_high_miRs_targets <- inner_join(mirtarbase, mirtarbase_nLDL_high_miRs_fd, join_by(miR_name))
+View(mirtarbase_nLDL_high_miRs_targets)
+mirtarbase_nLDL_high_miRs_targets <- mirtarbase_nLDL_high_miRs_targets %>% # so only get unique target names per mir
+  rowwise() %>% 
+  mutate(fltr = str_c(sort(c_across(c("miR_name", "Target.Gene"))), collapse = "")) %>% 
+  distinct(fltr, .keep_all = TRUE) %>% 
+  select(-fltr) %>% 
+  ungroup()
+write.csv(mirtarbase_nLDL_high_miRs_targets,"mirtarbase_nLDL_high_miRs_targets.csv")
+nLDL_high_targets <- inner_join(mirtarbase_nLDL_high_miRs_targets, nLDL_Degs, join_by(Target.Gene))
+View(nLDL_high_targets)
+write.csv(nLDL_high_targets,"nLDL_high_targets.csv")
+#upregulated
+nLDL_high_targets_up <- inner_join(mirtarbase_nLDL_high_miRs_targets, nLDL_Degs_up, join_by(Target.Gene))
+View(nLDL_high_targets_up)
+write.csv(nLDL_high_targets_up, "nLDL_high_targets_up.csv")
+
+# get oxLDL target number and sites #
+mirtarbase_oxLDL_high_miRs_fd <- inner_join(oxLDL_high_miRs_fd, mirtarbase_target_number, join_by(miR_name))
+mirtarbase_oxLDL_high_miRs_fd<- inner_join(mirtarbase_oxLDL_high_miRs_fd, mirtarbase_target_sites, join_by(miR_name))
+write.csv(mirtarbase_oxLDL_high_miRs_fd,"mirtarbase_oxLDL_high_miRs_fd.csv")
+# get target names 
+mirtarbase_oxLDL_high_miRs_targets <- inner_join(mirtarbase, mirtarbase_oxLDL_high_miRs_fd, join_by(miR_name))
+View(mirtarbase_oxLDL_high_miRs_targets)
+mirtarbase_oxLDL_high_miRs_targets <- mirtarbase_oxLDL_high_miRs_targets %>% # so only get unique target names per mir
+  rowwise() %>% 
+  mutate(fltr = str_c(sort(c_across(c("miR_name", "Target.Gene"))), collapse = "")) %>% 
+  distinct(fltr, .keep_all = TRUE) %>% 
+  select(-fltr) %>% 
+  ungroup()
+write.csv(mirtarbase_oxLDL_high_miRs_targets, "mirtarbase_oxLDL_high_miRs_targets.csv")
+oxLDL_high_targets <- inner_join(mirtarbase_oxLDL_high_miRs_targets, oxLDL_Degs, join_by(Target.Gene))
+View(oxLDL_high_targets)
+write.csv(oxLDL_high_targets,"oxLDL_high_targets.csv")
+#upregulated
+oxLDL_high_targets_up <- inner_join(mirtarbase_oxLDL_high_miRs_targets, oxLDL_Degs_up, join_by(Target.Gene))
+View(oxLDL_high_targets_up)
+write.csv(oxLDL_high_targets_up, "oxLDL_high_targets_up.csv")
+
+#### Make venn diagrams of the over laps ### 
+# overlap of all mirs #
+#PBS 
+PBS_miRs <- read.csv("PBS_miRs_all.csv")
+#nLDL 
+nLDL_miRs <- read.csv("nLDL_miRs_all.csv")
+#oxLDL 
+oxLDL_miRs <- read.csv("oxLDL_miRs_all.csv")
+#make vectors of miRs 
+PBS_all <- PBS_miRs$miR_name
+nLDL_all <- nLDL_miRs$miR_name
+oxLDL_all <- oxLDL_miRs$miR_name
+
+### make venn plot ###
+#find intercets 
+intersect_PBS_nLDL_all <- intersect(PBS_all,nLDL_all)
+intersect_nLDL_oxLDL_all <- intersect(nLDL_all,oxLDL_all)
+intersect_PBS_oxLDL_all <- intersect(PBS_all,oxLDL_all)
+intersect_all <- intersect(intersect_PBS_nLDL_all,oxLDL_all)
+print(intersect_all)
+# make plot 
+venn.plot.all.mirs <- draw.triple.venn(length(PBS_all), length(nLDL_all), length(oxLDL_all),
+                              length(intersect_PBS_nLDL_all),
+                              length(intersect_nLDL_oxLDL_all),
+                              length(intersect_PBS_oxLDL_all),
+                              length(intersect(intersect_PBS_nLDL_all,oxLDL_all)),
+                              category = c("PBS NL-EV", "nLDL NL-EV", "oxLDL NL-EV"),
+                              rotation = 1, 
+                              reverse = FALSE, 
+                              euler.d =FALSE, 
+                              scaled = FALSE,
+                              fill = c("#CC66FF", "#009E73", "#56B4E9"),
+                              alpha = rep(0.2,3),
+                              lwd = rep(4, 3), 
+                              lty = rep("blank", 3), 
+                              col = rep("black", 3),
+                              cex = rep(4, 7), 
+                              fontface = rep("italic", 7), 
+                              fontfamily = rep("serif", 7),
+                              sigdigs = 3, 
+                              direct.area = FALSE, 
+                              area.vector = 0,
+                              cat.cex = 3,
+                              cat.fontface = "bold",
+                              cat.default.pos = "outer")
+
+grid.draw(venn.plot.all.mirs)
+# make plot 
+
+#overlap of miRs with high expression in NMVs but less that 10 cpm in macrophages #
+#make vectors of miRs 
+PBS_low <- M0_PBS_HMDM_fd$miR_name
+nLDL_low <- M0_nLDL_HMDM_fd$miR_name
+oxLDL_low <- M0_oxLDL_HMDM_fd$miR_name
+
+### make venn plot ###
+#find intercets 
+intersect_PBS_nLDL_low <- intersect(PBS_low,nLDL_low)
+intersect_nLDL_oxLDL_low <- intersect(nLDL_low,oxLDL_low)
+intersect_PBS_oxLDL_low <- intersect(PBS_low,oxLDL_low)
+intersect_low <- intersect(intersect_PBS_nLDL_low,oxLDL_low)
+print(intersect_low)
+# make plot 
+venn.plot.low.mirs <- draw.triple.venn(length(PBS_low), length(nLDL_low), length(oxLDL_low),
+                                       length(intersect_PBS_nLDL_low),
+                                       length(intersect_nLDL_oxLDL_low),
+                                       length(intersect_PBS_oxLDL_low),
+                                       length(intersect(intersect_PBS_nLDL_low,oxLDL_low)),
+                                       category = c("PBS NL-EV", "nLDL NL-EV", "oxLDL NL-EV"),
+                                       rotation = 1, 
+                                       reverse = FALSE, 
+                                       euler.d =FALSE, 
+                                       scaled = FALSE,
+                                       fill = c("#CC66FF", "#009E73", "#56B4E9"),
+                                       alpha = rep(0.2,3),
+                                       lwd = rep(4, 3), 
+                                       lty = rep("blank", 3), 
+                                       col = rep("black", 3),
+                                       cex = rep(4, 7), 
+                                       fontface = rep("italic", 7), 
+                                       fontfamily = rep("serif", 7),
+                                       sigdigs = 3, 
+                                       direct.area = FALSE, 
+                                       area.vector = 0,
+                                       cat.cex = 3,
+                                       cat.fontface = "bold",
+                                       cat.default.pos = "outer")
+
+grid.draw(venn.plot.low.mirs)
+#overlap of miRs with high expression in NMVs and more than 100 fold higher expression in macrophages 
+#make vectors of miRs 
+PBS_high <- PBS_high_miRs_fd$miR_name
+nLDL_high <- nLDL_high_miRs_fd$miR_name
+oxLDL_high <- oxLDL_high_miRs_fd$miR_name
+
+### make venn plot ###
+#find intercets 
+
+intersect_PBS_nLDL_high <- intersect(PBS_high,nLDL_high)
+intersect_nLDL_oxLDL_high <- intersect(nLDL_high,oxLDL_high)
+intersect_PBS_oxLDL_high <- intersect(PBS_high,oxLDL_high)
+intersect_high <- intersect(intersect_PBS_nLDL_high,oxLDL_high)
+print(intersect_high)
+# make plot 
+venn.plot.high.mirs <- draw.triple.venn(length(PBS_high), length(nLDL_high), length(oxLDL_high),
+                                        length(intersect_PBS_nLDL_high),
+                                        length(intersect_nLDL_oxLDL_high),
+                                        length(intersect_PBS_oxLDL_high),
+                                        length(intersect(intersect_PBS_nLDL_high,oxLDL_high)),
+                                        category = c("PBS NL-EV", "nLDL NL-EV", "oxLDL NL-EV"),
+                                        rotation = 1, 
+                                        reverse = FALSE, 
+                                        euler.d =FALSE, 
+                                        scaled = FALSE,
+                                        fill = c("#CC66FF", "#009E73", "#56B4E9"),
+                                        alpha = rep(0.2,3),
+                                        lwd = rep(4, 3), 
+                                        lty = rep("blank", 3), 
+                                        col = rep("black", 3),
+                                        cex = rep(4, 7), 
+                                        fontface = rep("italic", 7), 
+                                        fontfamily = rep("serif", 7),
+                                        sigdigs = 3, 
+                                        direct.area = FALSE, 
+                                        area.vector = 0,
+                                        cat.cex = 3,
+                                        cat.fontface = "bold",
+                                        cat.default.pos = "outer")
+
+grid.draw(venn.plot.high.mirs)
