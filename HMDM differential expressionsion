@@ -1,0 +1,486 @@
+### load libraries ####
+library(readr)
+library(tximport)
+library(DESeq2)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(pheatmap)
+library(tibble)
+library(tidyverse)
+library(ggrepel)
+library(edgeR)
+library(VennDiagram)
+library("genefilter")
+library("RColorBrewer")
+library("Pigengene")
+SampleInfo <- read.csv("col_data1.csv")
+count_file <- read.csv("gene_count.csv")
+head(count_file)
+count_file <- count_file[,-c(1,35:42)]
+head(count_file)
+count_file <- count_file %>% 
+  select(gene_name, everything())
+counts <- count_file
+View(counts)
+View(SampleInfo)
+#edit counts file
+counts <- counts[rowSums(counts[, -1] > 0) != 0, ]
+counts <- counts[!duplicated(counts$gene_name), ]
+View(counts)
+####pca including sample e2 ########
+### set up design 
+dds_withE <- DESeqDataSetFromMatrix(counts, 
+                                    colData = SampleInfo, 
+                                    design = ~Participant + Condition,tidy = TRUE)
+low_expressed <- counts(dds_withE) >10
+keep <- rowSums(low_expressed) == ncol(dds_withE)
+Keep_dds <- rowSums(counts(dds_withE)) >= 10
+vsd_withE <- vst(dds_withE,blind=TRUE)
+plotPCA (vsd_withE,intgroup = ("Participant"),ntop=500)
+pcaData <- plotPCA(vsd_withE, intgroup=c("Condition", "Participant"), returnData=TRUE)
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+plotPCA(vsd_withE,intgroup=c("Condition","Participant"),returnData = TRUE) %>%
+  dplyr::rename(Run = name) %>% 
+  left_join(SampleInfo) %>% 
+  ggplot(aes(x = PC1, y = PC2, color= Participant , shape= Condition)) + geom_point(size=5) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  theme(aspect.ratio = 1)+
+  theme_bw() +
+  theme(axis.title.x = element_text(size=14, face="bold", colour = "black"),    
+        axis.title.y = element_text(size=14, face="bold", colour = "black"),    
+        axis.text.x = element_text(size=14, face="bold", colour = "black"),
+        axis.text.y = element_text(size=14, face="bold", colour = "black"),
+        legend.text = element_text(size=14, face="bold", colour = "black"),
+        legend.title = element_text(size=14, face="bold", colour = "black"))
+##### load count and coldata- data already has E2 REMOVED ALSO REMOVE DUPLICATED GENES AND GENES WITH A COUNT OF ZERO ACROSS  ####
+SampleInfo <- read.csv("col_data_no_E2.csv")
+counts <- read.csv("counts.csv")
+counts <- counts[rowSums(counts[, -1] > 0) != 0, ]
+counts <- counts[!duplicated(counts$gene_name), ]
+View(counts)
+View(SampleInfo)
+######## PCA design condition only no correction for participant #######
+dds_condition_only <- DESeqDataSetFromMatrix(counts, 
+                                             colData = SampleInfo, 
+                                             design = ~ Condition,tidy = TRUE)
+low_expressed <- counts(dds_condition_only) >10
+keep <- rowSums(low_expressed) == ncol(dds_condition_only)
+Keep_dds <- rowSums(counts(dds_condition_only)) >= 10
+dds_condition_only <- dds_condition_only[keep,]
+
+vsd_condition_only <- vst(dds_condition_only,blind=TRUE)
+plotPCA (vsd_condition_only,intgroup = ("Participant"),ntop=500)
+pcaData <- plotPCA(vsd_condition_only, intgroup=c("Condition", "Participant"), returnData=TRUE)
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+plotPCA(vsd_condition_only,intgroup=c("Condition","Participant"),returnData = TRUE) %>% 
+  dplyr::rename(Run = name) %>% 
+  left_join(SampleInfo1) %>% 
+  ggplot(aes(x = PC1, y = PC2, color= Participant , shape= Condition)) + geom_point(size=5) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  theme(aspect.ratio = 1) +
+  theme_bw() +
+  theme(axis.title.x = element_text(size=14, face="bold", colour = "black"),    
+        axis.title.y = element_text(size=14, face="bold", colour = "black"),    
+        axis.text.x = element_text(size=14, face="bold", colour = "black"),
+        axis.text.y = element_text(size=14, face="bold", colour = "black"),
+        legend.text = element_text(size=14, face="bold", colour = "black"),
+        legend.title = element_text(size=14, face="bold", colour = "black")) 
+  
+##deseq design and pca accounting for particapant ###
+dds <- DESeqDataSetFromMatrix(counts, 
+                              colData = SampleInfo, 
+                              design = ~ Participant + Condition,tidy = TRUE)
+## Run deseq AND PREFILTER TO REMOVE GENES WITH VERY LOW EXPRESSIOn use filter by expression function from edge r ###
+low_expressed <- counts(dds) >10
+keep <- rowSums(low_expressed) == ncol(dds)
+Keep_dds <- rowSums(counts(dds)) >= 10
+dds <- dds [keep,]
+##### DESEQ2#####
+dds <- DESeq(dds)
+#### Save deseq object so dont have to rerun ##
+saveRDS(dds, file = "deseqobjectnew.rds")
+##### Varience stabilisation transformation and plot normalised counts #####
+vsd <- vst(dds,blind=TRUE)
+vsd2 <- vst(dds,blind=TRUE)
+count_batch_corrected <- assay(vsd)
+View(count_batch_corrected)
+write.csv(count_batch_corrected,"batchcorrectedcountscondition.csv")
+boxplot(assay(vsd1), xlab="", ylab="Log2 counts per million",las=2,main="Normalised Distributions")
+abline(h=median(assay(vsd1)), col="blue")
+#### plot PCA for participant and group  participant is accounted for ####
+plotPCA (vsd,intgroup = ("Participant"),ntop=500)
+pcaData <- plotPCA(vsd, intgroup=c("Condition", "Participant"), returnData=TRUE)
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+plotPCA(vsd,intgroup=c("Condition","Participant"),returnData = TRUE) %>% 
+  dplyr::rename(Run = name) %>% 
+  left_join(SampleInfo1) %>% 
+  ggplot(aes(x = PC1, y = PC2, color= Participant , shape= Condition)) + geom_point(size=5) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  theme(aspect.ratio = 1) +
+  theme_bw() +
+  theme(axis.title.x = element_text(size=14, face="bold", colour = "black"),    
+        axis.title.y = element_text(size=14, face="bold", colour = "black"),    
+        axis.text.x = element_text(size=14, face="bold", colour = "black"),
+        axis.text.y = element_text(size=14, face="bold", colour = "black"),
+        legend.text = element_text(size=14, face="bold", colour = "black"),
+        legend.title = element_text(size=14, face="bold", colour = "black")) 
+##### Plot PCA for treated #########
+plotPCA (vsd,intgroup = ("Treated"),ntop=500)
+pcaData <- plotPCA(vsd, intgroup= ("Treated"), returnData=TRUE)
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+plotPCA(vsd,intgroup= ("Treated"),returnData = TRUE) %>% 
+  dplyr::rename(Run = name) %>% 
+  left_join(SampleInfo1) %>% 
+  ggplot(aes(x = PC1, y = PC2, color= Treated)) + geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+###### PCA Male female condition #####
+plotPCA (vsd,intgroup = ("Condition"),ntop=500)
+pcaData <- plotPCA(vsd, intgroup=c("Condition", "Gender"), returnData=TRUE)
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+plotPCA(vsd,intgroup=c("Condition","Gender"),returnData = TRUE) %>% 
+  dplyr::rename(Run = name) %>% 
+  left_join(SampleInfo1) %>% 
+  ggplot(aes(x = PC1, y = PC2, color= Gender , shape= Condition)) + geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+######## create a batch corrected matrix ###### 
+library(limma)
+batch_sample_info <- colData(dds)
+assay(vsd2) <- removeBatchEffect(x = count_batch_corrected,
+                                            batch = batch_sample_info$Participant,
+                                            design = model.matrix(~batch_sample_info$Condition))
+#### plot PCA for batch removal ####
+plotPCA (vsd2,intgroup = ("Participant"),ntop=500)
+pcaData <- plotPCA(vsd2, intgroup=c("Condition", "Participant"), returnData=TRUE)
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+plotPCA(vsd2,intgroup=c("Condition","Participant"),returnData = TRUE) %>% 
+  dplyr::rename(Run = name) %>% 
+  left_join(SampleInfo) %>% 
+  ggplot(aes(x = PC1, y = PC2, color= Participant , shape= Condition)) + geom_point(size=5) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  theme(aspect.ratio = 1) +
+  theme_bw() +
+  theme(axis.title.x = element_text(size=14, face="bold", colour = "black"),    
+        axis.title.y = element_text(size=14, face="bold", colour = "black"),    
+        axis.text.x = element_text(size=14, face="bold", colour = "black"),
+        axis.text.y = element_text(size=14, face="bold", colour = "black"),
+        legend.text = element_text(size=14, face="bold", colour = "black"),
+        legend.title = element_text(size=14, face="bold", colour = "black")) 
+
+##### Heat map for UT vs PBS ####
+top_UT_vs_PBS_genes <- dplyr::slice(results_UT_vs_PBS, 1:46) %>% pull(row)
+mat_PBS <- as.data.frame(assay(vsd)[top_UT_vs_PBS_genes,])
+View(mat_PBS)
+mat_PBS <- mat_PBS %>%
+  select(-contains(c("3","4")))
+View(mat_PBS)
+## reorder ##
+mat_PBS <- mat_PBS[,c("A1","B1","C1","D1","E1","F1","G1","H1", "A2","B2","C2","D2","F2","G2","H2")]
+PBS_vector <- c(rep("Ctrl",8),rep("PBS_NMV",7))
+anno_PBS <- as.data.frame(PBS_vector)
+rownames(anno_PBS) <- colnames(mat_PBS)
+## set colour for tretment groups 
+colnames(anno_PBS) <- "Treatment"
+anno_PBS$Treatment <- as.factor(anno_PBS$Treatment)
+ann_colors_PBS = list(
+  Treatment = c(Ctrl ="grey27", PBS_NMV ="grey70"))
+## draw heat map
+pheatmap(mat_PBS, annotation_col = anno_PBS, annotation_colors = ann_colors_PBS, treeheight_row = 40, cluster_cols=F, annotation_row = NA, show_rownames = FALSE, annotation_names_col = FALSE,color = colorRampPalette(rev(brewer.pal(n = 7, name = "PiYG")))(100), scale = "row", gaps_col = cumsum(c(8,7)), fontsize = 15 )
+##### Heat map for UT vs nLDL ####
+top_UT_vs_nLDL_genes <- dplyr::slice(results_UT_vs_nLDL, 1:46) %>% pull(row)
+mat_nLDL <- as.data.frame(assay(vsd)[top_UT_vs_nLDL_genes,])
+View(mat_nLDL)
+mat_nLDL <- mat_nLDL %>%
+  select(-contains(c("2","4")))
+## reorder ##
+mat_nLDL <- mat_nLDL[,c("A1","B1","C1","D1","E1","F1","G1","H1", "A3","B3","C3","D3","E3","F3","G3","H3")]
+nLDL_vector <- c(rep("Ctrl",8),rep("nLDL_NMV",8))
+anno_nLDL <- as.data.frame(nLDL_vector)
+rownames(anno_nLDL) <- colnames(mat_nLDL)
+## set colour for tretment groups 
+colnames(anno_nLDL) <- "Treatment"
+anno_nLDL$Treatment <- as.factor(anno_nLDL$Treatment)
+ann_colors_nLDL = list(
+  Treatment = c(Ctrl ="grey27", nLDL_NMV ="grey70"))
+## draw heat map
+pheatmap(mat_nLDL, annotation_col = anno_nLDL, annotation_colors = ann_colors_nLDL, treeheight_row = 40, cluster_cols=F, annotation_row = NA, show_rownames = FALSE, annotation_names_col = FALSE,color = colorRampPalette(rev(brewer.pal(n = 7, name = "PiYG")))(100), scale = "row", gaps_col = cumsum(c(8,8)), fontsize = 15 )
+##### Heat map for UT vs oxLDL ####
+top_UT_vs_oxLDL_genes <- dplyr::slice(results_UT_vs_oxLDL, 1:46) %>% pull(row)
+mat_oxLDL <- as.data.frame(assay(vsd)[top_UT_vs_oxLDL_genes,])
+View(mat_oxLDL)
+mat_oxLDL <- mat_oxLDL %>%
+  select(-contains(c("2","3")))
+## reorder ##
+mat_oxLDL <- mat_oxLDL[,c("A1","B1","C1","D1","E1","F1","G1","H1", "A4","B4","C4","D4","E4","F4","G4","H41")]
+oxLDL_vector <- c(rep("Ctrl",8),rep("oxLDL_NMV",8))
+anno_oxLDL <- as.data.frame(oxLDL_vector)
+rownames(anno_oxLDL) <- colnames(mat_oxLDL)
+## set colour for tretment groups 
+colnames(anno_oxLDL) <- "Treatment"
+anno_oxLDL$Treatment <- as.factor(anno_oxLDL$Treatment)
+ann_colors_oxLDL = list(
+  Treatment = c(Ctrl ="grey27", oxLDL_NMV ="grey70"))
+## draw heat map
+pheatmap(mat_oxLDL, annotation_col = anno_oxLDL, annotation_colors = ann_colors_oxLDL, treeheight_row = 40, cluster_cols=F, annotation_row = NA, show_rownames = FALSE, annotation_names_col = FALSE,color = colorRampPalette(rev(brewer.pal(n = 7, name = "PiYG")))(100), scale = "row", gaps_col = cumsum(c(8,8)), fontsize = 15 )
+#### differential exdpression UT vs PBS nmvs ####
+results_UT_vs_PBS <- results(dds, contrast=c("Condition","PBS_NMV","UT"),tidy=TRUE)  %>%
+  arrange(pvalue) %>%
+  write_csv("ddsconditionUT_vs_PBS_new.csv")
+##### volcano plot UT vs PBS ###
+sig_results_UT_vs_PBS <- results_UT_vs_PBS %>%
+  subset(pvalue<0.05) 
+##### make signifcant up regulated sheet #####
+sig_results_UT_vs_PBS_UP <- results_UT_vs_PBS %>%
+  subset(pvalue<0.05) %>%
+  subset(log2FoldChange>0) %>%
+  write.csv("sig_diff_Pvalue_UT_vs_PBS_UP.csv")
+##### make signifcant down regulated sheet #####
+sig_results_UT_vs_PBS_down <- results_UT_vs_PBS %>%
+  subset(pvalue<0.05) %>%
+  subset(log2FoldChange<0) %>%
+  write.csv("sig_diff_Pvalue_UT_vs_PBS_down.csv")
+#### make column called diffexprressed ######
+results_UT_vs_PBS$diffexpressed <- "NO"
+results_UT_vs_PBS$diffexpressed[results_UT_vs_PBS$log2FoldChange > 0.0 & results_UT_vs_PBS$padj < 0.1] <- "UP"
+results_UT_vs_PBS$diffexpressed[results_UT_vs_PBS$log2FoldChange < -0.0 & results_UT_vs_PBS$padj < 0.1] <- "DOWN"
+head(results_UT_vs_PBS)
+unique(results_UT_vs_PBS$diffexpressed)
+table(results_UT_vs_PBS$diffexpressed)
+###### make top column ######
+results_UT_vs_PBS$Top <- ifelse(results_UT_vs_PBS$row %in% head(arrange(results_UT_vs_PBS,padj),20)
+                                $row & results_UT_vs_PBS$diffexpressed != "NO", results_UT_vs_PBS$row, NA)
+head(results_UT_vs_PBS)
+View(results_UT_vs_PBS)
+####### plot #######
+table(results_UT_vs_PBS$diffexpressed)
+UT_vs_PBS <- ggplot(results_UT_vs_PBS, aes(x = log2FoldChange, y = log10(padj), col = diffexpressed, label=Top))+
+  geom_vline(xintercept = 0, col = "black", linetype = 'dashed', linewidth=0.8) +
+  geom_hline(yintercept = log10(0.1), col = "black", linetype = 'dashed', linewidth=0.8) +
+  xlim(-1,1.5)+
+  ylim(0,-3)+
+  scale_y_reverse() +
+  geom_point(size = 3) +
+  scale_color_manual(values = "grey40",
+                     labels = "NO") +
+  labs(x = expression("log"[2]*"FC"), y = expression("log"[10]*"p-adjusted value"))+
+  ggtitle('PBS NMV vs CTRL') +geom_text_repel(max.overlaps = 10, size=2.5, fontface="bold")+
+  theme(legend.title = element_blank(), plot.title.position = "right", plot.title = element_text(hjust = 0.5))+
+  theme_bw() +
+  theme(aspect.ratio = 1)
+UT_vs_PBS
+
+#### heat map PBS top degs####
+head(results_UT_vs_PBS)
+sampleInfo <- as.data.frame(colData(dds)["Condition"])
+assay_vsd <- as.data.frame(assay(vsd)) 
+#REORDER THE SAMPLE INFO and vsd dataframes into treatment groups
+X <- c("A1","B1","C1","D1","E1","F1","G1","H1","A2","B2","C2","D2","F2","G2","H2","A3","B3","C3","D3","E3","F3","G3","H3","A4","B4","C4","D4","E4","F4","G4","H41")
+sampleInfo %>%
+  slice(match(X, row.names(sampleInfo)))
+assay_vsd <- assay_vsd[,X]
+top_UT_vs_PBS_genes <- dplyr::slice(results_UT_vs_PBS, 1:50) %>% pull(row)
+UT_vs_PBS_heatmap <- pheatmap(assay_vsd[top_UT_vs_PBS_genes,], 
+                                 annotation_col = sampleInfo,
+                                 scale="row",
+                                 cluster_cols = FALSE)
+UT_vs_PBS_heatmap
+
+#### differential exdpression UT vs nLDL_NMV nmvs ####
+results_UT_vs_nLDL <- results(dds, contrast=c("Condition","nLDL_NMV","UT"),tidy=TRUE)  %>%
+  arrange(pvalue) %>% 
+  write_csv("ddsconditionUT_vs_nLDL_NMV_new.csv")
+##### volcano plot UT vs nLDL ###
+sig_results_UT_vs_nLDL <- results_UT_vs_nLDL %>%
+  subset(pvalue<0.05)
+##### make signifcant up regulated sheet #####
+sig_results_UT_vs_nLDL_UP <- results_UT_vs_nLDL %>%
+  subset(pvalue<0.05) %>%
+  subset(log2FoldChange>0) %>%
+  write.csv("sig_diff_Pvalue_UT_vs_nLDL_UP.csv")
+##### make signifcant down regulated sheet #####
+sig_results_UT_vs_nLDL_down <- results_UT_vs_nLDL %>%
+  subset(pvalue<0.05) %>%
+  subset(log2FoldChange<0) %>%
+  write.csv("sig_diff_Pvalue_UT_vs_nLDL_down.csv")
+#### make column called diffexprressed ######
+results_UT_vs_nLDL$diffexpressed <- "NO"
+results_UT_vs_nLDL$diffexpressed[results_UT_vs_nLDL$log2FoldChange > 0.0 & results_UT_vs_nLDL$padj < 0.1] <- "UP"
+results_UT_vs_nLDL$diffexpressed[results_UT_vs_nLDL$log2FoldChange < -0.0 & results_UT_vs_nLDL$padj < 0.1] <- "DOWN"
+head(results_UT_vs_nLDL)
+unique(results_UT_vs_nLDL$diffexpressed)
+table(results_UT_vs_nLDL$diffexpressed)
+###### make top column ######
+results_UT_vs_nLDL$Top <- ifelse(results_UT_vs_nLDL$row %in% head(arrange(results_UT_vs_nLDL,padj),20)
+                                 $row & results_UT_vs_nLDL$diffexpressed != "NO", results_UT_vs_nLDL$row, NA)
+head(results_UT_vs_nLDL)
+####### plot #######
+table(results_UT_vs_nLDL$diffexpressed)
+UT_vs_nLDL <- ggplot(results_UT_vs_nLDL, aes(x = log2FoldChange, y = log10(padj), col = diffexpressed, label=Top))+
+  geom_vline(xintercept = 0, col = "black", linetype = 'dashed', linewidth=0.8) +
+  geom_hline(yintercept = log10(0.1), col = "black", linetype = 'dashed', linewidth=0.8) +
+  scale_y_reverse() +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("grey40", "palegreen4"),
+                     labels = c("NO", "UP")) +
+  labs(x = expression("log"[2]*"FC"), y = expression("log"[10]*"p-adjusted"))+
+  ggtitle('nLDL NMVs vs CTRL') +geom_text_repel(max.overlaps = 20, size=3, fontface="bold")+
+  theme(legend.title = "none", plot.title.position = "right", plot.title = element_text(hjust = 0.5))+theme_classic() +
+  theme_bw() +
+  theme(aspect.ratio = 1)
+UT_vs_nLDL
+
+#### heat map nLDL top degs####
+head(results_UT_vs_nLDL)
+top_UT_vs_nLDL_genes <- dplyr::slice(results_UT_vs_nLDL, 1:50) %>% pull(row)
+UT_vs_nLDL_heatmap <- pheatmap(assay_vsd[top_UT_vs_nLDL_genes,], 
+                              annotation_col = sampleInfo,
+                              scale="row",
+                              cluster_cols = FALSE)
+UT_vs_nLDL_heatmap
+
+#### differential exdpression UT vs oxldl nmvs ####
+results_UT_vs_oxLDL <- results(dds, contrast=c("Condition","oxLDL_NMV","UT"),tidy=TRUE)  %>%
+  arrange(pvalue) %>% 
+  write_csv("ddsconditionUT_vs_oxLDL_new.csv")
+##### volcano plot UT vs oxLDL ###
+##### make signifcant up regulated sheet #####
+sig_results_UT_vs_oxLDL <- results_UT_vs_oxLDL %>%
+  subset(pvalue<0.05)
+sig_results_UT_vs_oxLDL_UP <- results_UT_vs_oxLDL %>%
+  subset(pvalue<0.05) %>%
+  subset(log2FoldChange>0) %>%
+  write.csv("sig_diff_Pvalue_UT_vs_oxLDL_UP.csv")
+##### make signifcant down regulated sheet #####
+sig_results_UT_vs_oxLDL_down <- results_UT_vs_oxLDL %>%
+  subset(pvalue<0.05) %>%
+  subset(log2FoldChange<0) %>%
+  write.csv("sig_diff_Pvalue_UT_vs_oxLDL_down.csv")
+
+##### make signifcant sheet #####
+sig_results_UT_vs_oxLDL <- results_UT_vs_oxLDL %>%
+  subset(pvalue<0.05)
+#### make column called diffexprressed ######
+results_UT_vs_oxLDL$diffexpressed <- "NO"
+results_UT_vs_oxLDL$diffexpressed[results_UT_vs_oxLDL$log2FoldChange > 0.0 & results_UT_vs_oxLDL$padj < 0.1] <- "UP"
+results_UT_vs_oxLDL$diffexpressed[results_UT_vs_oxLDL$log2FoldChange < -0.0 & results_UT_vs_oxLDL$padj < 0.1] <- "DOWN"
+head(results_UT_vs_oxLDL)
+unique(results_UT_vs_oxLDL$diffexpressed)
+table(results_UT_vs_oxLDL$diffexpressed)
+###### make top column ######
+results_UT_vs_oxLDL$Top <- ifelse(results_UT_vs_oxLDL$row %in% head(arrange(results_UT_vs_oxLDL,padj),20)
+                                  $row & results_UT_vs_oxLDL$diffexpressed != "NO", results_UT_vs_oxLDL$row, NA)
+head(results_UT_vs_oxLDL)
+####### plot #######
+table(results_UT_vs_oxLDL$diffexpressed)
+UT_vs_oxLDL <- ggplot(results_UT_vs_oxLDL, aes(x = log2FoldChange, y = log10(padj), col = diffexpressed, label=Top))+
+  geom_vline(xintercept = 0, col = "black", linetype = 'dashed', linewidth=0.8) +
+  geom_hline(yintercept = log10(0.1), col = "black", linetype = 'dashed', linewidth=0.8) +
+  scale_y_reverse() +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("magenta3", "grey40", "palegreen4"),
+                     labels = c("DOWN", "NO", "UP")) +
+  labs(x = expression("log"[2]*"FC"), y = expression("log"[10]*"p-adjusted"))+
+  ggtitle('oxLDL NMVs vs CTRL') +geom_text_repel(max.overlaps = 20, size=3, fontface="bold")+
+  theme(legend.title = "none", plot.title.position = "right", plot.title = element_text(hjust = 0.5))+theme_classic() +
+  theme_bw() +
+  theme(aspect.ratio = 1)
+UT_vs_oxLDL
+#### heat map oxLDL top degs####
+head(results_UT_vs_oxLDL)
+top_UT_vs_oxLDL_genes <- dplyr::slice(results_UT_vs_oxLDL, 1:50) %>% pull(row)
+UT_vs_oxLDL_heatmap <- pheatmap(assay_vsd[top_UT_vs_oxLDL_genes,], 
+                               annotation_col = sampleInfo,
+                               scale="row",
+                               cluster_cols = FALSE)
+UT_vs_oxLDL_heatmap
+### make combined volcano plot ####
+ggarrange(UT_vs_PBS, UT_vs_nLDL, UT_vs_oxLDL, nLDL_vs_oxLDL, ncol = 4, common.legend = TRUE)
+##### Heat map for UT vs PBS ####
+top_UT_vs_PBS_genes <- dplyr::slice(results_UT_vs_PBS, 1:200) %>% pull(row)
+mat_PBS <- as.data.frame(assay(vsd)[top_UT_vs_PBS_genes,])
+View(mat_PBS)
+mat_PBS <- mat %>%
+  select(-contains(c("3","4")))
+View(mat_PBS)
+## reorder ##
+mat_PBS <- mat_PBS[,c("A1","B1","C1","D1","E1","F1","G1","H1", "A2","B2","C2","D2","F2","G2","H2")]
+PBS_vector <- c(rep("Ctrl",8),rep("PBS_NMV",7))
+anno_PBS <- as.data.frame(PBS_vector)
+rownames(anno_PBS) <- colnames(mat_PBS)
+## set colour for tretment groups 
+colnames(anno_PBS) <- "Treatment"
+anno_PBS$Treatment <- as.factor(anno_PBS$Treatment)
+ann_colors_PBS = list(
+  Treatment = c(Ctrl ="grey27", PBS_NMV ="grey70"))
+## draw heat map
+pheatmap(mat_PBS, annotation_col = anno_PBS, annotation_colors = ann_colors_PBS, treeheight_row = 40, cluster_cols=F, annotation_row = NA, show_rownames = FALSE, annotation_names_col = FALSE,color = colorRampPalette(rev(brewer.pal(n = 7, name = "PiYG")))(100), scale = "row", gaps_col = cumsum(c(8,7)), fontsize = 15 )
+##### Heat map for UT vs nLDL ####
+top_UT_vs_nLDL_genes <- dplyr::slice(results_UT_vs_nLDL, 1:200) %>% pull(row)
+mat_nLDL <- as.data.frame(assay(vsd)[top_UT_vs_nLDL_genes,])
+View(mat_nLDL)
+mat_nLDL <- mat_nLDL %>%
+  select(-contains(c("2","4")))
+## reorder ##
+mat_nLDL <- mat_nLDL[,c("A1","B1","C1","D1","E1","F1","G1","H1", "A3","B3","C3","D3","E3","F3","G3","H3")]
+nLDL_vector <- c(rep("Ctrl",8),rep("nLDL_NMV",8))
+anno_nLDL <- as.data.frame(nLDL_vector)
+rownames(anno_nLDL) <- colnames(mat_nLDL)
+## set colour for tretment groups 
+colnames(anno_nLDL) <- "Treatment"
+anno_nLDL$Treatment <- as.factor(anno_nLDL$Treatment)
+ann_colors_nLDL = list(
+  Treatment = c(Ctrl ="grey27", nLDL_NMV ="grey70"))
+## draw heat map
+pheatmap(mat_nLDL, annotation_nLDL = anno_nLDL, annotation_colors = ann_colors_nLDL, treeheight_row = 40, cluster_cols=F, annotation_row = NA, annotation_names_col = FALSE, show_rownames = FALSE,color = colorRampPalette(rev(brewer.pal(n = 7, name = "PiYG")))(100), scale = "row", gaps_col = cumsum(c(8,8)), fontsize = 15 )
+##### Heat map for UT vs oxLDL ####
+top_UT_vs_oxLDL_genes <- dplyr::slice(results_UT_vs_oxLDL, 1:200) %>% pull(row)
+mat_oxLDL <- as.data.frame(assay(vsd)[top_UT_vs_oxLDL_genes,])
+View(mat_oxLDL)
+mat_oxLDL <- mat_oxLDL %>%
+  select(-contains(c("2","3")))
+## reorder ##
+mat_oxLDL <- mat_oxLDL[,c("A1","B1","C1","D1","E1","F1","G1","H1", "A4","B4","C4","D4","E4","F4","G4","H41")]
+oxLDL_vector <- c(rep("Ctrl",8),rep("oxLDL_NMV",8))
+anno_oxLDL <- as.data.frame(oxLDL_vector)
+rownames(anno_oxLDL) <- colnames(mat_oxLDL)
+## set colour for tretment groups 
+colnames(anno_oxLDL) <- "Treatment"
+anno_oxLDL$Treatment <- as.factor(anno_oxLDL$Treatment)
+ann_colors_oxLDL = list(
+  Treatment = c(Ctrl ="grey27", oxLDL_NMV ="grey70"))
+## draw heat map
+pheatmap(mat_oxLDL, annotation_oxLDL = anno_oxLDL, annotation_colors = ann_colors_oxLDL, treeheight_row = 40, cluster_cols=F, annotation_row = NA, show_rownames = FALSE, annotation_names_col = FALSE,color = colorRampPalette(rev(brewer.pal(n = 7, name = "PiYG")))(100), scale = "row", gaps_col = cumsum(c(8,8)), fontsize = 15 )
+
+####### make a ven diagram for all the degs p=/<0.05 between ut and NMV conditons ###
+#load library#
+library(VennDiagram)
+#### make sheets of degs below p=0.05 ##
+UT_vs_PBS_sig <- sig_results_UT_vs_PBS$row
+UT_vs_nLDL_sig <- sig_results_UT_vs_nLDL$row
+UT_vs_oxLDL_sig <- sig_results_UT_vs_oxLDL$row
+View(UT_vs_PBS_sig)
+### make venn plot ###
+#find intercets 
+intersect_PBS_nLDL <- intersect(UT_vs_PBS_sig,UT_vs_nLDL_sig)
+intersect_nLDL_oxLDL <- intersect(UT_vs_nLDL_sig,UT_vs_oxLDL_sig)
+intersect_PBS_oxLDL <- intersect(UT_vs_PBS_sig,UT_vs_oxLDL_sig)
+intersect_all <- intersect(intersect_PBS_nLDL,UT_vs_oxLDL_sig)
+print(intersect_all)
+venn.plot <- draw.triple.venn(length(UT_vs_PBS_sig), length(UT_vs_nLDL_sig), length(UT_vs_oxLDL_sig),
+                             length(intersect_PBS_nLDL),
+                             length(intersect_nLDL_oxLDL),
+                             length(intersect_PBS_oxLDL),
+                             length(intersect(intersect_PBS_nLDL,UT_vs_oxLDL_sig)),
+                             category = c("Ctrl vs PBS NMV", "Ctrl vs nLDL NMV", "Ctrl vs oxLDL NMV"),
+                             scaled = F,
+                             fill = c("blue", "pink", "purple"),
+                             alpha = rep(1,2,3))
+grid.draw(venn.plot)
