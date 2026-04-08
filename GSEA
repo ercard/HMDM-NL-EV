@@ -6,7 +6,6 @@ library(tidyr)
 library(tidyverse)
 library(ggplot2)
 library(RColorBrewer)
-###### CONVERTING GENE SYMBL TO ENSEMBL id 1:MANY MAPPING ISSUE GO BACK AND DO DESEQ QITH ENSEMBL idS ####
 ####READ IN COUNTS AND COL DATA WITH ENSEMBL GENE IDS ###
 SampleInfo <- read_csv("col_data1.csv")
 count_file <- read_csv("count_deseq2.csv")
@@ -34,7 +33,7 @@ SampleInfo1 <- SampleInfo %>%
   write_csv("col_data_no_E2.csv")
 View(SampleInfo1)
 SampleInfo1 <- as.data.frame(SampleInfo1)
-######## most variance seems to be between participants so add this into d seq design #####
+######## most variance seems to be between participants so add this into deseq design #####
 #### Remove genes with extremely low expression ###### 
 dds <- DESeqDataSetFromMatrix(count1, 
                               colData = SampleInfo1, 
@@ -45,7 +44,7 @@ low_expressed <- counts(dds) >10
 keep <- rowSums(low_expressed) == ncol(dds)
 dds <- dds [keep,]
 dds <- DESeq(dds)
-#### differential exdpression UT vs nldl nmvs ####
+#### differential expression UT vs nldl nmvs ####
 results_UT_vs_nLDL <- results(dds, contrast=c("Condition","nLDL_NMV","UT"),tidy=TRUE)  %>%
   arrange(pvalue) %>% 
   write_csv("ddsconditionUT_vs_nLDL_ensembl_new.csv")
@@ -55,13 +54,13 @@ results_UT_vs_PBS <- results(dds, contrast=c("Condition","PBS_NMV","UT"),tidy=TR
   arrange(pvalue) %>% 
   write_csv("ddsconditionUT_vs_PBS_ensembl_new.csv")
 results_UT_vs_PBS <- read.csv("ddsconditionUT_vs_PBS_ensembl_new.csv")
-#### differential exdpression UT vs oxldl nmvs ####
+#### differential expression UT vs oxldl nmvs ####
 results_UT_vs_oxLDL <- results(dds, contrast=c("Condition","oxLDL_NMV","UT"),tidy=TRUE)  %>%
   arrange(pvalue) %>% 
   write_csv("ddsconditionUT_vs_oxLDL_ensembl_new.csv")
 results_UT_vs_oxLDL <- read.csv("ddsconditionUT_vs_oxLDL_ensembl_new.csv")
 View(results_UT_vs_oxLDL)
-#### differential exdpression UT vs pbs nmvs ####
+#### differential expression UT vs pbs nmvs ####
 ##### diferential expression nLDL vs oxLDL ##
 results_nLDL_vs_oxLDL <- results(dds, contrast=c("Condition","oxLDL_NMV","nLDL_NMV"),tidy=TRUE)  %>%
   arrange(pvalue) %>% 
@@ -78,8 +77,8 @@ results_PBS_vs_oxLDL <- results(dds, contrast=c("Condition","oxLDL_NMV","PBS_NMV
   write_csv("ddsconditionPBS_vs_oxLDL_ensembl_new.csv")
 View(results_PBS_vs_oxLDL)
 
-######## Will also use a different ranking system to order degs for GSEA anlysis ###### -log10({p value}) * sign({Fold Change}) this takes into account both significance and the size of the fold change 
-#######GSEA requires a character ensembl id vector a numeriic fold change vector and number vector to be sorted in descending order ####
+######## Will rank based on fold change and significance to order degs for GSEA anlysis ###### -log10({p value}) * sign({Fold Change}) this takes into account both significance and the size of the fold change 
+#######GSEA requires a character ensembl id vector a numeric fold change vector and number vector to be sorted in descending order ####
 ####### arrange ut vs nLDL ######
 library(clusterProfiler)
 library(org.Hs.eg.db)
@@ -96,7 +95,6 @@ library(GO.db)
 library(aPEAR)
 library("GOSemSim")
 
-set.seed(25)
 View(results_UT_vs_nLDL)
 LogFC_PvAL_UT_nLDL1 <- data.frame(ENSEMBL = results_UT_vs_nLDL$row, Log2FC = results_UT_vs_nLDL$log2FoldChange, PValue = results_UT_vs_nLDL$pvalue) 
 LogFC_PvAL_UT_nLDL1$pvalfc <- with(LogFC_PvAL_UT_nLDL1,-log10(PValue)*sign(Log2FC))
@@ -106,7 +104,7 @@ View(LogFC_PvAL_UT_nLDL1)
 LogFC_PvAL_UT_nLDL <- LogFC_PvAL_UT_nLDL1[,4]
 names(LogFC_PvAL_UT_nLDL) <- LogFC_PvAL_UT_nLDL1[,1]
 LogFC_PvAL_UT_nLDL <- sort(LogFC_PvAL_UT_nLDL, decreasing = TRUE)
-####### arange ut vs oxLDL #####
+####### arrange ut vs oxLDL #####
 View(results_UT_vs_oxLDL)
 LogFC_PvAL_UT_oxLDL1 <- data.frame(ENSEMBL = results_UT_vs_oxLDL$row, Log2FC = results_UT_vs_oxLDL$log2FoldChange, PValue = results_UT_vs_oxLDL$pvalue) 
 LogFC_PvAL_UT_oxLDL1$pvalfc <- with(LogFC_PvAL_UT_oxLDL1,-log10(PValue)*sign(Log2FC))
@@ -139,7 +137,7 @@ LogFC_PvAL_nLDL_vs_oxLDL <- sort(LogFC_PvAL_nLDL_vs_oxLDL, decreasing = TRUE)
 ###### GSEA GO and KEGG UT VS nLDL ranked on LFC and PVAL ######
 
 ###### GO analysis #####
-?gseGO()
+
 GSE_GO_BP_UT_vs_nLDL_LFC_PVAL <- gseGO(geneList = LogFC_PvAL_UT_nLDL, ont = "BP", OrgDb = "org.Hs.eg.db", keyType = "ENSEMBL")
 GSE_GO_CC_UT_vs_nLDL_LFC_PVAL <- gseGO(geneList = LogFC_PvAL_UT_nLDL, OrgDb = "org.Hs.eg.db", keyType = "ENSEMBL", ont = "CC")
 GSE_GO_MF_UT_vs_nLDL_LFC_PVAL <- gseGO(geneList = LogFC_PvAL_UT_nLDL, OrgDb = "org.Hs.eg.db", keyType = "ENSEMBL", ont = "MF")
@@ -244,7 +242,7 @@ Reactome_UT_vs_nLDL_PVALLFC_df <- as.data.frame(Reactome_UT_vs_nLDL_PVALLFC) %>%
 ###### GSEA GO and KEGG UT VS oxLDL ranked on LFC and PVAL ######
 
 ###### GO analysis #####
-?gseGO()
+
 GSE_GO_BP_UT_vs_oxLDL_LFC_PVAL <- gseGO(geneList = LogFC_PvAL_UT_oxLDL, ont = "BP", OrgDb = "org.Hs.eg.db", keyType = "ENSEMBL")
 GSE_GO_CC_UT_vs_oxLDL_LFC_PVAL <- gseGO(geneList = LogFC_PvAL_UT_oxLDL, OrgDb = "org.Hs.eg.db", keyType = "ENSEMBL", ont = "CC")
 GSE_GO_MF_UT_vs_oxLDL_LFC_PVAL <- gseGO(geneList = LogFC_PvAL_UT_oxLDL, OrgDb = "org.Hs.eg.db", keyType = "ENSEMBL", ont = "MF")
@@ -274,7 +272,7 @@ View(CC_UT_vs_oxLDL_LFC_PVAL)
 MF_UT_vs_oxLDL_LFC_PVAL <- MF_UT_vs_oxLDL_LFC_PVAL %>%
   mutate(class = rep('Molecular Function', 5))
 View(MF_UT_vs_oxLDL_LFC_PVAL)
-### join dat frames###
+### join data frames###
 combined_UT_vs_oxLDL_LFC_PVAL <- rbind(BP_UT_vs_oxLDL_LFC_PVAL, CC_UT_vs_oxLDL_LFC_PVAL, MF_UT_vs_oxLDL_LFC_PVAL)
 View(combined_UT_vs_oxLDL_LFC_PVAL)
 
@@ -289,7 +287,7 @@ combined_plot_UT_vs_oxLDL_LFC_PVAL <- combined_UT_vs_oxLDL_LFC_PVAL %>% ggplot(a
             size = 4, hjust=-0.1,
             position = position_dodge(0.9))
 combined_plot_UT_vs_oxLDL_LFC_PVAL
-?ggplot()
+
 
 ### CREATED ENRICHMENT MAP ##
 GSE_GO_BP_UT_vs_oxLDL_LFC_PVAL_plot <- enrichmentNetwork(GSE_GO_BP_UT_vs_oxLDL_LFC_PVAL@result, repelLabels = TRUE, drawEllipses = TRUE, fontSize = 4)
@@ -326,7 +324,7 @@ oxphos_BP_oxLDL_genes$SYMBOL <-mapIds(
   column = "SYMBOL",
   keytype = "ENSEMBL",
   multiVals = "first")
-### get lipid metabolism gens 
+### get lipid metabolism genes 
 lipid_metabolism_BP_oxLDL_genes <- as.data.frame(geneInCategory(GSE_GO_BP_UT_vs_oxLDL_LFC_PVAL)[GSE_GO_BP_UT_vs_oxLDL_LFC_PVAL$ID[123]])
 View(lipid_metabolism_BP_oxLDL_genes)
 lipid_metabolism_BP_oxLDL_genes$SYMBOL <-mapIds(
@@ -354,7 +352,6 @@ lipid_transport_BP_oxLDL_genes$SYMBOL <-mapIds(
   column = "SYMBOL",
   keytype = "ENSEMBL",
   multiVals = "first")
-### get mononuclear cell migration genes ###
 
 ##### Kegg analysis #####
 #### first need to convert ensembl to entrez ids #####
@@ -386,100 +383,11 @@ GSE_Kegg_dot_UT_oxLDL_PVALLFC_PLOT <- enrichmentNetwork(GSE_kegg_UT_vs_oxLDL_PVA
 View(as.data.frame(GSE_Kegg_dot_UT_oxLDL_PVALLFC_PLOT$plot_env$clust))
 GSE_Kegg_dot_UT_oxLDL_PVALLFC_PLOT
 
-### get fatty acid metabolism genes from enrichment plot cluster ###
-#fatty acid metabolism = hsa01212
-#fatty acid elongation = hsa00062
-#biosynthesis of unsaturated fatty acids = hsa01040
-# fatty acid degradation = hsa00071
-# We get entrez ids and their pathways.
-library(tidyverse)
-hsa_path_entrez  <- keggLink("pathway", "hsa") %>% 
-  tibble(pathway = ., eg = sub("hsa:", "", names(.)))
 
-# get gene symbols and ensembl ids using entrez gene ids
-
-hsa_kegg_anno <- hsa_path_entrez %>%
-  mutate(
-    symbol = mapIds(org.Hs.eg.db, eg, "SYMBOL", "ENTREZID"),
-    ensembl = mapIds(org.Hs.eg.db, eg, "ENSEMBL", "ENTREZID")
-  )
-
-# Pathway names
-hsa_pathways <- keggList("pathway", "hsa") %>% 
-  tibble(pathway = names(.), description = .)
-
-KEGG_pathways <- left_join(hsa_kegg_anno, hsa_pathways)
-# filter so it is only pathways in cluster 
-keep <- c("path:hsa01212","path:hsa00062","path:hsa01040","path:hsa00071")
-fatty_acid_metabolism <- dplyr::filter(KEGG_pathways, pathway %in% keep)
-View(fatty_acid_metabolism)
-fatty_acid_metabolism <- dplyr::rename(fatty_acid_metabolism, ENTREZID = eg)
-fatty_acid_metabolism <- inner_join(fatty_acid_metabolism, KEGG_LogFC_PvAL_UT_oxLDL)
-View(fatty_acid_metabolism)
-head(KEGG_pathways)
-
-##### extract oxphos related genes #######
-oxphos_oxLDL_genes <- as.data.frame(geneInCategory(GSE_kegg_UT_vs_oxLDL_PVALLFC)[GSE_kegg_UT_vs_oxLDL_PVALLFC$ID[1]])
-View(oxphos_oxLDL_genes)
-oxphos_oxLDL_genes$SYMBOL <-mapIds(
-  x = org.Hs.eg.db,
-  keys = oxphos_oxLDL_genes$hsa00190 ,
-  column = "SYMBOL",
-  keytype = "ENTREZID",
-  multiVals = "first")
-oxphos_oxLDL_genes$row <-mapIds(
-  x = org.Hs.eg.db,
-  keys = oxphos_oxLDL_genes$hsa00190 ,
-  column = "ENSEMBL",
-  keytype = "ENTREZID",
-  multiVals = "first")
-### INNER_JOIN RESULTS FROM DESEQ AND OXPHOS GENS 
-oxLDL_oxPHOS_stats <- results_UT_vs_oxLDL %>%
-  inner_join(oxphos_oxLDL_genes, by = "row") %>%
-  write.csv("oxLDLoxphosgenesstats.csv")
-View(oxLDL_oxPHOS_stats)
-
-##### extract parkinsons releated genes #
-parkinsons_oxLDL_genes <- as.data.frame(geneInCategory(GSE_kegg_UT_vs_oxLDL_PVALLFC)[GSE_kegg_UT_vs_oxLDL_PVALLFC$ID[3]])
-View(parkinsons_oxLDL_genes)
-parkinsons_oxLDL_genes$SYMBOL <-mapIds(
-  x = org.Hs.eg.db,
-  keys = parkinsons_oxLDL_genes$hsa00190 ,
-  column = "SYMBOL",
-  keytype = "ENTREZID",
-  multiVals = "first")
-#### Wiki pathways  ###
-Wiki_UT_vs_oxLDL_PVALLFC <- gseWP(oxLDL_PVALLFC_geneList, organism = "Homo sapiens")
-Wiki_UT_vs_oxLDL_PVALLFC_df <- as.data.frame(Wiki_UT_vs_oxLDL_PVALLFC) %>%
-  write.csv("Wiki_UT_vs_oxLDL_PVALLFC.csv")
-
-View(Wiki_UT_vs_oxLDL_PVALLFC_df)
-### Reactome analysis ###
-library(ReactomePA)
-Reactome_UT_vs_oxLDL_PVALLFC <- gsePathway(oxLDL_PVALLFC_geneList, 
-                                           pvalueCutoff = 0.5,
-                                           pAdjustMethod = "BH", 
-                                           verbose = FALSE)
-Reactome_UT_vs_oxLDL_PVALLFC_df <- as.data.frame(Reactome_UT_vs_oxLDL_PVALLFC) %>% 
-  write_csv("Reactome_UT_vs_oxLDL_PVALLFC.csv")
-View(Reactome_UT_vs_oxLDL_PVALLFC_df)
-head(Reactome_ut_nLDL, 20)
-### look at lipid metabolism##
-viewPathway("Metabolism of lipids", 
-            readable = TRUE, 
-            foldChange = oxLDL_PVALLFC_geneList)
-### look at respiration ##
-viewPathway("Aerobic respiration and respiratory electron transport", 
-            readable = TRUE, 
-            foldChange = oxLDL_PVALLFC_geneList)
-### look at rho gtpases ##
-viewPathway("RHO GTPases activate PKNs", 
-            readable = TRUE, 
-            foldChange = oxLDL_PVALLFC_geneList)
 ###### GSEA GO and KEGG UT VS PBS ranked on LFC and PVAL ######
 
 ###### GO analysis #####
-?gseGO()
+
 GSE_GO_BP_UT_vs_PBS_LFC_PVAL <- gseGO(geneList = LogFC_PvAL_UT_PBS, ont = "BP", OrgDb = "org.Hs.eg.db", keyType = "ENSEMBL")
 GSE_GO_CC_UT_vs_PBS_LFC_PVAL <- gseGO(geneList = LogFC_PvAL_UT_PBS, OrgDb = "org.Hs.eg.db", keyType = "ENSEMBL", ont = "CC")
 GSE_GO_MF_UT_vs_PBS_LFC_PVAL <- gseGO(geneList = LogFC_PvAL_UT_PBS, OrgDb = "org.Hs.eg.db", keyType = "ENSEMBL", ont = "MF")
@@ -573,37 +481,8 @@ GSE_Kegg_dot_UT_PBS_PVALLFC_PLOT
 ggarrange(combined_plot_UT_vs_PBS_LFC_PVAL, combined_plot_UT_vs_nLDL_LFC_PVAL, combined_plot_UT_vs_oxLDL_LFC_PVAL, ncol=3, labels = c("PBS vs CTRL","nLDL vs CTRL","oxLDL vs CTRL"), widths = 2, heights = 2, common.legend = FALSE) %>%
   annotate_figure(top = text_grob("GO enrichment analysis",
                                   face = "bold", size = 14))
-marg
+
 ## COMBINE KEGG DOT PLOTS 
 ggarrange(GSE_Kegg_dot_UT_PBS_PVALLFC, GSE_Kegg_dot_UT_nLDL_PVALLFC, GSE_Kegg_dot_UT_oxLDL_PVALLFC, ncol=3, labels = c("PBS vs CTRL","nLDL vs CTRL", "oxLDL vs CTRL"), widths = 1, heights = 2, common.legend = FALSE) %>%
   annotate_figure(top = text_grob("KEGG enrichment analysis",
                                   face = "bold", size = 14))
-
-library("pathview")
-nLDLcGMP <- pathview(gene.data  = nLDL_geneList,
-                     pathway.id = "hsa04022",
-                     species    = "hsa",
-                     limit      = list(gene=max(abs(nLDL_geneList)), cpd=1))
-#### Wiki pathways  ###
-Wiki_UT_nLDL <- gseWP(nLDL_geneList, organism = "Homo sapiens")
-Wiki_UT_nLDL_df <- as.data.frame(Wiki_UT_nLDL)
-View(Wiki_UT_nLDL_df)
-### Reactome analysis ###
-if (!require("BiocManager", quietly = TRUE)) {
-  install.packages("BiocManager")
-}
-BiocManager::install(version = 'devel')  # Initialize usage of Bioc devel
-BiocManager::install("ReactomePA")
-n
-library(ReactomePA)
-Reactome_ut_nLDL <- gsePathway(nLDL_geneList, 
-                               pvalueCutoff = 0.5,
-                               pAdjustMethod = "BH", 
-                               verbose = FALSE)
-Reactome_UT_nLDL_df <- as.data.frame(Reactome_ut_nLDL)
-View(Reactome_UT_nLDL_df)
-head(Reactome_ut_nLDL, 20)
-### look at Cholesterol biosynthesis cycle##
-viewPathway("Cholesterol biosynthesis", 
-            readable = TRUE, 
-            foldChange = nLDL_geneList)
