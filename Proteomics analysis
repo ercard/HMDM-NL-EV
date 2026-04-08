@@ -12,7 +12,7 @@ library(clusterProfiler)
 library(ggplot2)
 library(dplyr)
 library(readxl)
-### read in files containing the top 100 proteins and intensity lelvels iin NMVs from different conditions ###
+### read in files containing the top 100 proteins and intensity lelvels in NMVs from different conditions ###
 #PBS
 PBS_Proteins <- read_excel("PBS_top.xlsx")
 PBS_Proteins <- PBS_Proteins %>%
@@ -102,35 +102,13 @@ PBS_nLDL_proteins <- rbind(PBS_Proteins, nLDL_Proteins)
 oxLDL_unique_proteins <- anti_join(oxLDL_Proteins, PBS_nLDL_proteins, by= "SYMBOL")
 View(oxLDL_unique_proteins)
 write.csv(oxLDL_unique_proteins, "oxLDL_unique_proteins.csv")
-###### FIND PROTEINS THAT ARE SHARED BY LIPID treated macrophages ###
+###### FIND PROTEINS THAT ARE SHARED BY LIPID treated neutrophils ###
 # make datgframe of shared nLDL and oxLDL proteins 
 nLDL_and_oxLDL_proteins <- merge(oxLDL_Proteins, nLDL_Proteins, by="UNIPROT")
 # make a dataframe of proteins in lipid treated macrophages that are not in PBS NMVs#
 nLDL_oxLDL_unique_proteins <- anti_join(nLDL_and_oxLDL_proteins, PBS_Proteins, by="UNIPROT")
 View(nLDL_oxLDL_unique_proteins)
-### enrichment analysis with enrichr ####
-# view enrichr datbases 
-dbs <- listEnrichrDbs()
-dbs <- dbs[order(dbs$libraryName),]
-dbs$libraryName
-#### select GO and Kegg data bases ###
-dbs_enrich <- c("GO_Cellular_Component_2025","GO_Biological_Process_2025","GO_Molecular_Function_2025", "KEGG_2021_Human")
-dbs_reactome <- "Reactome_2022"   
-## enrichment for PBS NMVs ##
-PBS_Enriched <- enrichr(genes = PBS_Proteins$SYMBOL, databases = dbs_enrich)
 
-PBS_Enriched_cc_df <- as.data.frame(PBS_Enriched$GO_Cellular_Component_2025)
-PBS_Enriched_BP_df <- as.data.frame(PBS_Enriched$GO_Biological_Process_2025)
-PBS_Enriched_MF_df <- as.data.frame(PBS_Enriched$GO_Molecular_Function_2025)
-PBS_Enriched_KEGG_df <- as.data.frame(PBS_Enriched$KEGG_2021_Human)
-View(PBS_Enriched_BP_df)
-View(PBS_Enriched_cc_df)
-View(PBS_Enriched_MF_df)
-View(PBS_Enriched_KEGG_df)
-PBS_Reactome <- enrichr(genes = PBS_Proteins$SYMBOL, databases = dbs_reactome)
-PBS_Reactome <- as.data.frame(PBS_Reactome)
-View(PBS_Reactome)
-View(PBS_Enriched_df)
 ##### cluster profiler ##
 # convert to entrez ##
 PBS_Protein_ENTREZ <- AnnotationDbi::select(org.Hs.eg.db, keys = PBS_Proteins$UNIPROT, columns = c("UNIPROT","ENTREZID"), keytype = "UNIPROT") %>%
@@ -162,7 +140,7 @@ background_entrez <-  AnnotationDbi::select(org.Hs.eg.db, keys = background$Prot
   filter(!duplicated(UNIPROT)) %>% 
   filter(ENTREZID !='NA')
 # oxLDL GO enrichement #
-?gseGO()
+
 GSE_GO_BP_oxLDL_Protein_ENTREZ  <- enrichGO(gene = oxLDL_Protein_ENTREZ$ENTREZID, ont = "BP", OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", universe = background_entrez$ENTREZID )
 GSE_GO_CC_oxLDL_Protein_ENTREZ  <-  enrichGO(gene = oxLDL_Protein_ENTREZ$ENTREZID, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "CC", universe = background_entrez$ENTREZID )
 GSE_GO_MF_oxLDL_Protein_ENTREZ  <-  enrichGO(gene = oxLDL_Protein_ENTREZ$ENTREZID, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "MF", universe = background_entrez$ENTREZID )
@@ -288,7 +266,7 @@ View(GSE_GO_CC_oxLDL_unique_proteins_df)
 View(GSE_GO_MF_oxLDL_unique_proteins_df)
 
 # nLDL GO enrichement #
-?gseGO()
+
 GSE_GO_BP_nLDL_Protein_ENTREZ  <- enrichGO(gene = nLDL_Protein_ENTREZ$ENTREZID, ont = "BP", OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", universe = background_entrez$ENTREZID )
 GSE_GO_CC_nLDL_Protein_ENTREZ  <-  enrichGO(gene = nLDL_Protein_ENTREZ$ENTREZID, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "CC", universe = background_entrez$ENTREZID )
 GSE_GO_MF_nLDL_Protein_ENTREZ  <-  enrichGO(gene = nLDL_Protein_ENTREZ$ENTREZID, OrgDb = "org.Hs.eg.db", keyType = "ENTREZID", ont = "MF", universe = background_entrez$ENTREZID )
