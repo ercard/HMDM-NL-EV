@@ -1,4 +1,4 @@
-##### activate librarys and read in significantly diff expressed genes #####
+##### activate librarys  #####
 library(DESeq2)
 library(readr)
 library(dplyr)
