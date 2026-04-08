@@ -18,7 +18,7 @@ M0_PBS_HMDM_fd <- read.csv("M0_HMDM_PBS_NMV_miRs.csv")
 M0_nLDL_HMDM_fd <- read.csv("M0_HMDM_nLDL_NMV_miRs.csv")
 ###### read in data frame with average counts of oxLDL nmv MIRS AND THE COUNTS OF THE SAME MIRS IN HMDMS ###
 M0_oxLDL_HMDM_fd <- read.csv("M0_HMDM_oxLDL_NMV_miRs.csv")
-##### spoke to endre and vikki and they said not to do fold difference and do ranking instead ###
+##### Rank miRs with the highest expression in NMVs top and with the lowest expression in MO HMDM top  ###
 #PBS
 M0_PBS_HMDM_fd$NMV_Rank <- rank(-M0_PBS_HMDM_fd$PBS_NMV_averagecount) #NMV mirs with highest cpm given lowest ranking
 M0_PBS_HMDM_fd$HMDM_Rank <- rank(M0_PBS_HMDM_fd$HMDM_averagecount, ties.method = "max")# HMDM mirs with lowest count ranked lowest - currently as there is 34 0 values all have been given a rank of 33 then next rank is 34 - may come back and change this 
@@ -155,7 +155,7 @@ M0_nLDL_targets_up <- inner_join(mirtarbase_M0_nLDL_targets, nLDL_Degs_up, join_
 View(M0_nLDL_targets_up)
 write.csv(M0_nLDL_targets_up, "nLDL_low_targets_up.csv")
 
-##### OXldll ##
+##### OXldl ##
 #### get number of targets 
 mirtarbase_M0_oxLDL_HMDM <- inner_join(M0_oxLDL_HMDM_fd, mirtarbase_target_number, join_by(miR_name))
 View(mirtarbase_M0_oxLDL_HMDM)
