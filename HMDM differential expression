@@ -93,7 +93,7 @@ plotPCA(vsd_condition_only,intgroup=c("Condition","Participant"),returnData = TR
 dds <- DESeqDataSetFromMatrix(counts, 
                               colData = SampleInfo, 
                               design = ~ Participant + Condition,tidy = TRUE)
-## Run deseq AND PREFILTER TO REMOVE GENES WITH VERY LOW EXPRESSIOn use filter by expression function from edge r ###
+## Run deseq AND PREFILTER TO REMOVE GENES WITH VERY LOW expression as recommended in the vignette ###
 low_expressed <- counts(dds) >10
 keep <- rowSums(low_expressed) == ncol(dds)
 Keep_dds <- rowSums(counts(dds)) >= 10
